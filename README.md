@@ -36,6 +36,15 @@ Headless check (no window), writes a PNG:
 .venv/Scripts/python -m pytest
 ```
 
+### Pre-commit hook
+
+`scripts/hooks/pre-commit` runs the tests before every commit and aborts the commit if
+any fail. Git doesn't install hooks automatically, so do it once per clone:
+
+```bash
+cp scripts/hooks/pre-commit .git/hooks/pre-commit
+```
+
 ## Units
 
 | Unit | Role | Beats |

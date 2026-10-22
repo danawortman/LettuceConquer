@@ -1,0 +1,22 @@
+#!/bin/sh
+# Runs the test suite before each commit; the commit is aborted if any test fails.
+# Install once per clone:  cp scripts/hooks/pre-commit .git/hooks/pre-commit
+# Skip in an emergency:    git commit --no-verify
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+if [ -x .venv/Scripts/python.exe ]; then
+  PY=.venv/Scripts/python.exe
+elif [ -x .venv/bin/python ]; then
+  PY=.venv/bin/python
+elif command -v python3 >/dev/null 2>&1; then
+  PY=python3
+else
+  PY=python
+fi
+
+echo "pre-commit: running tests..."
+if ! "$PY" -m pytest -q; then
+  echo "pre-commit: tests failed, commit aborted." >&2
+  exit 1
+fi
