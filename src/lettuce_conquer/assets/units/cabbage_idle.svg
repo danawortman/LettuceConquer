@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-200 40 340 220" width="340" height="220">
+  <!-- Lettuce Conquer: Sir Cabbage (bruiser), idle. Feet anchor at (0, 248).
+       Team key color #3a7bd5 (swapped per team at load). Inline attributes only: pygame/nanosvg
+       ignores CSS and text. -->
+  <g>
+    <ellipse cx="0" cy="248" rx="60" ry="9" fill="#000" opacity="0.12"/>
+    <ellipse cx="-22" cy="248" rx="11" ry="5.5" fill="#4a8f2c" stroke="#2b2118" stroke-width="2.5"/>
+    <ellipse cx="22" cy="248" rx="11" ry="5.5" fill="#4a8f2c" stroke="#2b2118" stroke-width="2.5"/>
+    <!-- sword -->
+    <!-- outer ruffled leaves -->
+    <!-- loose outer leaves tucked in (idle) -->
+    <g transform="translate(17.4,180.3) rotate(-105)"><path d="M0 0 Q-37.8 -8.4 -42 -37.8 Q-54.6 -54.6 -37.8 -67.2 Q-33.6 -88.2 -8.4 -88.2 Q0 -100.8 12.6 -88.2 Q37.8 -88.2 37.8 -67.2 Q54.6 -50.4 37.8 -33.6 Q33.6 -8.4 0 0 Z" fill="#a3d47c" stroke="#2b2118" stroke-width="3" stroke-linejoin="round"/><path d="M0 -4.2 L0 -75.6 M0 -29.4 L-21 -46.2 M0 -29.4 L21 -46.2 M0 -54.6 L-16.8 -67.2 M0 -54.6 L16.8 -67.2" stroke="#5ea83a" stroke-width="2.5" fill="none" stroke-linecap="round"/></g>
+    <g transform="translate(-17.4,180.3) rotate(105)"><path d="M0 0 Q-37.8 -8.4 -42 -37.8 Q-54.6 -54.6 -37.8 -67.2 Q-33.6 -88.2 -8.4 -88.2 Q0 -100.8 12.6 -88.2 Q37.8 -88.2 37.8 -67.2 Q54.6 -50.4 37.8 -33.6 Q33.6 -8.4 0 0 Z" fill="#a3d47c" stroke="#2b2118" stroke-width="3" stroke-linejoin="round"/><path d="M0 -4.2 L0 -75.6 M0 -29.4 L-21 -46.2 M0 -29.4 L21 -46.2 M0 -54.6 L-16.8 -67.2 M0 -54.6 L16.8 -67.2" stroke="#5ea83a" stroke-width="2.5" fill="none" stroke-linecap="round"/></g>
+    <g transform="translate(16.9,191.2) rotate(-70)"><path d="M0 0 Q-41.4 -9.2 -46 -41.4 Q-59.8 -59.8 -41.4 -73.6 Q-36.8 -96.6 -9.2 -96.6 Q0 -110.4 13.8 -96.6 Q41.4 -96.6 41.4 -73.6 Q59.8 -55.2 41.4 -36.8 Q36.8 -9.2 0 0 Z" fill="#a3d47c" stroke="#2b2118" stroke-width="3" stroke-linejoin="round"/><path d="M0 -4.6 L0 -82.8 M0 -32.2 L-23 -50.6 M0 -32.2 L23 -50.6 M0 -59.8 L-18.4 -73.6 M0 -59.8 L18.4 -73.6" stroke="#5ea83a" stroke-width="2.5" fill="none" stroke-linecap="round"/></g>
+    <g transform="translate(-16.9,191.2) rotate(70)"><path d="M0 0 Q-41.4 -9.2 -46 -41.4 Q-59.8 -59.8 -41.4 -73.6 Q-36.8 -96.6 -9.2 -96.6 Q0 -110.4 13.8 -96.6 Q41.4 -96.6 41.4 -73.6 Q59.8 -55.2 41.4 -36.8 Q36.8 -9.2 0 0 Z" fill="#a3d47c" stroke="#2b2118" stroke-width="3" stroke-linejoin="round"/><path d="M0 -4.6 L0 -82.8 M0 -32.2 L-23 -50.6 M0 -32.2 L23 -50.6 M0 -59.8 L-18.4 -73.6 M0 -59.8 L18.4 -73.6" stroke="#5ea83a" stroke-width="2.5" fill="none" stroke-linecap="round"/></g>
+    <g transform="translate(10.3,199.7) rotate(-35)"><path d="M0 0 Q-41.4 -9.2 -46 -41.4 Q-59.8 -59.8 -41.4 -73.6 Q-36.8 -96.6 -9.2 -96.6 Q0 -110.4 13.8 -96.6 Q41.4 -96.6 41.4 -73.6 Q59.8 -55.2 41.4 -36.8 Q36.8 -9.2 0 0 Z" fill="#a3d47c" stroke="#2b2118" stroke-width="3" stroke-linejoin="round"/><path d="M0 -4.6 L0 -82.8 M0 -32.2 L-23 -50.6 M0 -32.2 L23 -50.6 M0 -59.8 L-18.4 -73.6 M0 -59.8 L18.4 -73.6" stroke="#5ea83a" stroke-width="2.5" fill="none" stroke-linecap="round"/></g>
+    <g transform="translate(-10.3,199.7) rotate(35)"><path d="M0 0 Q-41.4 -9.2 -46 -41.4 Q-59.8 -59.8 -41.4 -73.6 Q-36.8 -96.6 -9.2 -96.6 Q0 -110.4 13.8 -96.6 Q41.4 -96.6 41.4 -73.6 Q59.8 -55.2 41.4 -36.8 Q36.8 -9.2 0 0 Z" fill="#a3d47c" stroke="#2b2118" stroke-width="3" stroke-linejoin="round"/><path d="M0 -4.6 L0 -82.8 M0 -32.2 L-23 -50.6 M0 -32.2 L23 -50.6 M0 -59.8 L-18.4 -73.6 M0 -59.8 L18.4 -73.6" stroke="#5ea83a" stroke-width="2.5" fill="none" stroke-linecap="round"/></g>
+    <g transform="translate(0,203) rotate(0)"><path d="M0 0 Q-37.8 -8.4 -42 -37.8 Q-54.6 -54.6 -37.8 -67.2 Q-33.6 -88.2 -8.4 -88.2 Q0 -100.8 12.6 -88.2 Q37.8 -88.2 37.8 -67.2 Q54.6 -50.4 37.8 -33.6 Q33.6 -8.4 0 0 Z" fill="#a3d47c" stroke="#2b2118" stroke-width="3" stroke-linejoin="round"/><path d="M0 -4.2 L0 -75.6 M0 -29.4 L-21 -46.2 M0 -29.4 L21 -46.2 M0 -54.6 L-16.8 -67.2 M0 -54.6 L16.8 -67.2" stroke="#5ea83a" stroke-width="2.5" fill="none" stroke-linecap="round"/></g>
+    <path d="M-56 204 Q-68 180 -54 164 Q-56 140 -34 138 Q-24 122 -4 128 Q14 120 30 134 Q52 134 54 156 Q68 172 58 192 Q66 216 48 228 Q40 248 18 246 Q0 254 -18 246 Q-42 248 -48 228 Q-66 220 -56 204 Z" fill="#5ea83a" stroke="#2b2118" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M-50 214 Q-42 198 -46 178 M50 214 Q42 198 46 178 M-36 150 Q-24 156 -18 146 M36 150 Q24 156 18 146" stroke="#4a8f2c" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <!-- cupped front leaf with a wavy edge -->
+    <path d="M-48 172 Q-52 196 -40 214 Q-30 236 -6 240 Q0 246 8 240 Q32 236 42 214 Q52 196 46 170 Q40 182 30 178 Q20 190 6 184 Q0 192 -8 184 Q-22 190 -30 178 Q-40 184 -48 172 Z" fill="#79c24f" stroke="#2b2118" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- inner leaf -->
+    <path d="M-34 190 Q-30 222 -4 232 Q0 236 6 232 Q30 222 34 190 Q24 200 14 196 Q4 204 -4 198 Q-16 204 -34 190 Z" fill="#9ad66e" stroke-width="2" stroke="#2b2118" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- veins -->
+    <path d="M0 236 L0 206 M-3 232 Q-16 220 -22 204 M3 232 Q16 220 22 204 M-12 222 L-20 218 M12 222 L20 218" stroke="#5ea83a" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <!-- too-small helmet -->
+    <!-- plume grows out of the helmet; socket knob on top -->
+    <path d="M-4 128 Q-4 86 32 82 Q18 94 8 128 Z" fill="#3a7bd5" stroke="#2b2118" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M-26 140 Q0 104 26 140 Z" fill="#3a7bd5" stroke="#2b2118" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    <rect x="-28" y="136" width="56" height="9" rx="3" fill="#3a7bd5" stroke-width="2" stroke="#2b2118" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="1" cy="121" r="5" fill="#8b929c" stroke="#2b2118" stroke-width="2"/>
+    <!-- face -->
+    <ellipse cx="-16" cy="166" rx="8" ry="9" fill="#fff" stroke-width="2" stroke="#2b2118" stroke-linejoin="round" stroke-linecap="round"/>
+    <ellipse cx="16" cy="166" rx="8" ry="9" fill="#fff" stroke-width="2" stroke="#2b2118" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="-15" cy="168" r="4" fill="#2b2118"/>
+    <circle cx="17" cy="168" r="4" fill="#2b2118"/>
+    <path d="M-28 152 L-8 158 M28 152 L8 158" stroke="#2b2118" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M-10 180 Q0 174 10 180" fill="none" stroke="#2b2118" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- team sash -->
+    <path d="M-56 202 Q0 220 56 202 L54 218 Q0 238 -54 218 Z" stroke-width="2" fill="#3a7bd5" stroke="#2b2118" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- shield hand sits behind the shield -->
+    <line x1="-40" y1="200" x2="-56" y2="206" stroke="#2b2118" stroke-width="12" stroke-linecap="round"/>
+    <line x1="-34.4" y1="197.9" x2="-56" y2="206" stroke="#8fcf5f" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="-56" cy="206" r="7" fill="#8fcf5f" stroke="#2b2118" stroke-width="2.5"/>
+    <path d="M-78 180 L-42 180 L-42 204 Q-42 226 -60 236 Q-78 226 -78 204 Z" fill="#3a7bd5" stroke="#2b2118" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M-60 190 Q-50 204 -60 224 Q-70 204 -60 190 Z" fill="#f6efd9" stroke="#2b2118" stroke-width="2" stroke-linejoin="round"/>
+    <!-- arms: left hand grips the shield, right hand grips the sword -->
+    <!-- sword in front of the body, behind the gripping hand -->
+    <line x1="70" y1="198" x2="86" y2="110" stroke="#2b2118" stroke-width="10" stroke-linecap="round"/>
+    <line x1="70" y1="198" x2="86" y2="110" stroke="#c9ced6" stroke-width="6" stroke-linecap="round"/>
+    <line x1="69" y1="200" x2="67" y2="216" stroke="#2b2118" stroke-width="8" stroke-linecap="round"/>
+    <line x1="69" y1="200" x2="67" y2="216" stroke="#8a5a2b" stroke-width="4" stroke-linecap="round"/>
+    <line x1="58" y1="196" x2="82" y2="202" stroke="#2b2118" stroke-width="8" stroke-linecap="round"/>
+    <line x1="58" y1="196" x2="82" y2="202" stroke="#8a5a2b" stroke-width="4" stroke-linecap="round"/>
+    <line x1="40" y1="200" x2="66" y2="208" stroke="#2b2118" stroke-width="12" stroke-linecap="round"/>
+    <line x1="34.3" y1="198.2" x2="66" y2="208" stroke="#8fcf5f" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="68" cy="208" r="7" fill="#8fcf5f" stroke="#2b2118" stroke-width="2.5"/>
+  </g>
+</svg>

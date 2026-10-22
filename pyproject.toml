@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lettuce-conquer"
+version = "0.1.0"
+description = "Lettuce Conquer: Leaf No One Behind - an educational vegetable RTS built on pygame-ce."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["pygame-ce>=2.5"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+lettuce-conquer-demo = "lettuce_conquer.demo:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+lettuce_conquer = ["assets/units/*.svg"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

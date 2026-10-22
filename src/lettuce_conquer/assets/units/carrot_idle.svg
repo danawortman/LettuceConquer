@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-200 40 340 220" width="340" height="220">
+  <!-- Lettuce Conquer: Carrot Lancer (charger), idle. Feet anchor at (0, 248).
+       Team key color #3a7bd5 (swapped per team at load). Inline attributes only: pygame/nanosvg
+       ignores CSS and text. -->
+  <g>
+    <ellipse cx="0" cy="248" rx="70" ry="8" fill="#000" opacity="0.12"/>
+    <line x1="-30" y1="206" x2="-40" y2="240" stroke="#2b2118" stroke-width="12" stroke-linecap="round"/>
+    <line x1="-30.0" y1="206.0" x2="-40" y2="240" stroke="#f08a24" stroke-width="7" stroke-linecap="round"/>
+    <ellipse cx="-44" cy="245" rx="11" ry="5.5" fill="#c96a12" stroke="#2b2118" stroke-width="2.5"/>
+    <line x1="0" y1="202" x2="10" y2="240" stroke="#2b2118" stroke-width="12" stroke-linecap="round"/>
+    <line x1="0.0" y1="202.0" x2="10" y2="240" stroke="#f08a24" stroke-width="7" stroke-linecap="round"/>
+    <ellipse cx="12" cy="245" rx="11" ry="5.5" fill="#c96a12" stroke="#2b2118" stroke-width="2.5"/>
+    <!-- speed lines -->
+    <path d="M-110 166 L-92 166 M-114 230 L-94 230" stroke="#c4b48f" stroke-width="3" stroke-linecap="round"/>
+    <!-- feathery fronds -->
+    <path d="M-56 182 Q-70 168 -82 150 L-76 152 L-80 140 L-70 148 L-70 136 L-64 150 Q-60 168 -54 180 Z" fill="#5ea83a" stroke-width="2" stroke="#2b2118" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M-58 190 Q-80 190 -102 184 L-96 180 L-106 176 L-94 174 L-100 166 L-88 174 Q-72 182 -58 186 Z" fill="#79c24f" stroke-width="2" stroke="#2b2118" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M-58 196 Q-74 210 -92 222 L-90 214 L-100 214 L-90 206 L-96 198 L-84 202 Q-72 198 -58 192 Z" fill="#5ea83a" stroke-width="2" stroke="#2b2118" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- root hairs -->
+    <path d="M-28 172 L-30 163 M20 178 L22 170 M52 186 L55 179 M-20 212 L-22 220 M14 208 L13 216 M46 200 L48 207 M72 194 L76 200" stroke="#a35510" stroke-width="1.5" stroke-linecap="round"/>
+    <!-- body: lumpy taper, tip bent up a little -->
+    <path d="M-58 170 Q-48 166 -38 170 L-36 174 L-34 170 Q-24 168 -16 172 L-14 176 L-12 172 Q-2 172 6 176 L8 180 L10 176 Q20 176 28 180 L30 184 L32 180 Q42 181 50 184 L52 187 L54 184 Q62 185 70 187 L72 189 L74 187 Q86 187 96 188 Q86 192 74 195 L72 193 L70 196 Q62 198 54 200 L52 196 L50 201 Q42 203 32 205 L30 201 L28 206 Q20 208 10 209 L8 205 L6 210 Q-2 212 -12 212 L-14 208 L-16 213 Q-24 214 -34 214 L-36 210 L-38 215 Q-50 218 -58 216 Q-62 192 -58 170 Z" fill="#f08a24" stroke="#2b2118" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M31 181 Q42 181 51 185 L51 200 Q42 203 31 204 Z" fill="#3a7bd5" stroke="#2b2118" stroke-width="2.5" stroke-linejoin="round"/>
+    <!-- shoulder shading + growth rings -->
+    <path d="M-52 174 Q-56 192 -52 210" stroke="#f6a85a" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M8 180 Q12 192 8 205 M30 184 Q34 192 30 201 M52 187 Q55 192 52 196 M72 189 Q74 191 72 193 M-36 174 Q-35 177 -36 179 M-36 210 Q-35 207 -36 205 M-14 176 Q-13 178 -14 180 M-14 208 Q-13 206 -14 204" stroke="#b8600f" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <!-- team pennant -->
+    <path d="M-48 168 L-48 118" stroke-width="3" stroke="#2b2118" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M-48 120 L0 134 L-48 152 Z" stroke-width="2" fill="#3a7bd5" stroke="#2b2118" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- face (determined) -->
+    <ellipse cx="-34" cy="186" rx="7" ry="8" fill="#fff" stroke-width="2" stroke="#2b2118" stroke-linejoin="round" stroke-linecap="round"/>
+    <ellipse cx="-16" cy="186" rx="7" ry="8" fill="#fff" stroke-width="2" stroke="#2b2118" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="-31" cy="188" r="3.5" fill="#2b2118"/>
+    <circle cx="-13" cy="188" r="3.5" fill="#2b2118"/>
+    <path d="M-42 176 L-28 180 M-8 176 L-22 180" stroke="#2b2118" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M-30 202 Q-24 206 -18 202" fill="none" stroke="#2b2118" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- running feet -->
+  </g>
+</svg>
