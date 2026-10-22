@@ -56,3 +56,7 @@ pygame loads SVGs with nanosvg, which has limits:
 - Use inline attributes only (`fill=`, `stroke=`). CSS `<style>` and classes are ignored.
 - `<text>` is ignored.
 - Team-colored areas use the key color `#3a7bd5`, which is swapped per team at load time.
+
+## License
+
+[MIT](LICENSE). That covers everything in this repository: code, art and docs.
