@@ -12,3 +12,18 @@ dist/
 
 # Local output
 screenshots/
+
+# Local assistant/editor config (never committed)
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+**/CLAUDE.md
+**/CLAUDE.local.md
+**/AGENTS.md
+.claude/
+.mcp.json
+.cursor/
+.cursorrules
+.github/copilot-instructions.md
+.vscode/
+.idea/

@@ -1,0 +1,13 @@
+# Store and check out text files with LF on every OS (the game targets Linux and Windows).
+* text=auto eol=lf
+
+*.svg text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+
+*.png binary
+*.jpg binary
+*.ogg binary
+*.wav binary
+*.ttf binary
