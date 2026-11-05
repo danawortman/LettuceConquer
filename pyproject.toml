@@ -22,7 +22,7 @@ lettuce-conquer-demo = "lettuce_conquer.demo:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-lettuce_conquer = ["assets/units/*.svg"]
+lettuce_conquer = ["assets/units/*.svg", "assets/buildings/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

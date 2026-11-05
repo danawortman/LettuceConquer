@@ -60,6 +60,33 @@ Unit art lives in `src/lettuce_conquer/assets/units/` as one SVG per unit and st
 (`<unit>_idle.svg`, `<unit>_battle.svg`). All share one frame (`viewBox="-200 40 340 220"`)
 with the unit's feet at `(0, 248)`, so any unit can be placed by the same anchor.
 
+### Buildings
+
+Building art lives in `src/lettuce_conquer/assets/buildings/` as `<building>_<state>.svg`.
+The catalog (footprints, states, which unit each building sprouts) is in
+`src/lettuce_conquer/buildings.py`.
+
+| Building | Footprint | Notes |
+|---|---|---|
+| Greenhouse | 3x3 | HQ; sprouts Spuds |
+| Root Cellar | 2x2 | Unit upgrades; +10% resource collection per cellar, compounding |
+| Cabbage Patch | 2x2 | Sprouts Sir Cabbage |
+| Pea Trellis | 2x2 | Sprouts Pea Shooters |
+| Carrot Bed | 2x2 | Sprouts Carrot Lancers |
+| Scarecrow Watchtower | 1x1 | Defense |
+| Compost Heap | 2x2 | Neutral resource: Compost |
+| Watering Can | 2x2 | Neutral resource: Water |
+
+Team-owned buildings have the states `planted`, `sprout`, `grown`, `wilted` (damaged), and
+`sprouting` (a unit popping out) if they sprout units. While planted and sprouting up, the team
+pennant climbs its pole to show construction progress. Resources have `full`, `half` and `low`
+frames.
+
+Art is drawn at 120 px per grid tile, the same scale as the units. Buildings of one footprint
+share a frame (see `FRAMES` in `buildings.py`) with the building's ground point at `(0, 0)`.
+
+### SVG rules
+
 pygame loads SVGs with nanosvg, which has limits:
 
 - Use inline attributes only (`fill=`, `stroke=`). CSS `<style>` and classes are ignored.
