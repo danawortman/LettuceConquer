@@ -14,20 +14,28 @@ python -m venv .venv
 Use **pygame-ce**, not legacy `pygame`. Both install a module called `pygame`, so keep
 this project in its own virtual environment.
 
-## Run the unit test scene
+## Run the art test scene
 
 ```bash
 .venv/Scripts/python -m lettuce_conquer.demo
 ```
 
-- `Space`: toggle idle / battle mode
-- Mouse wheel: zoom (check how units read when small)
+- `Tab`: switch between the units view and the buildings view
+- `Space` (units): toggle idle / battle mode
+- `S` (buildings): cycle planted, sprout, grown, sprouting, wilted
+- `R` (buildings): cycle resource level full, half, low
+- `T` (buildings): switch team
+- Mouse wheel: zoom (check how art reads when small)
 - `Esc`: quit
+
+Start in the buildings view with `--view buildings`; `--state`, `--level` and `--team` pick
+what it shows first.
 
 Headless check (no window), writes a PNG:
 
 ```bash
 .venv/Scripts/python -m lettuce_conquer.demo --screenshot screenshots/demo.png
+.venv/Scripts/python -m lettuce_conquer.demo --view buildings --state wilted --screenshot screenshots/buildings.png
 ```
 
 ## Tests

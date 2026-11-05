@@ -7,6 +7,8 @@ import pytest
 
 from lettuce_conquer import art
 from lettuce_conquer.buildings import BUILDINGS, CATALOG, FRAMES
+from lettuce_conquer.demo import BUILDING_STATES
+from lettuce_conquer.demo import main as demo_main
 from lettuce_conquer.units import UNITS
 
 BUILDING_DIR = Path(art.UNIT_DIR).parent / "buildings"
@@ -60,3 +62,22 @@ def test_sprouting_buildings_name_real_units():
     for b in CATALOG:
         if b.sprouts:
             assert b.sprouts in UNITS
+
+
+def test_building_surface_is_its_frame_at_scale():
+    assert art.building_surface("greenhouse", "grown", "red", 0.5).get_size() == (250, 205)
+    assert art.building_surface("scarecrow", "grown", "blue", 1.0).get_size() == (260, 280)
+
+
+def test_blit_building_puts_the_ground_point_on_target():
+    dest = pygame.Surface((600, 500), pygame.SRCALPHA)
+    drawn = art.blit_building(dest, "greenhouse", "grown", "blue", (300, 450), 1.0)
+    # The 3x3 frame starts at (-250, -380), so the ground point sits 250 px right and 380 px down.
+    assert drawn.topleft == (50, 70)
+
+
+@pytest.mark.parametrize("state", BUILDING_STATES)
+def test_demo_buildings_view_screenshot(tmp_path, state):
+    out = tmp_path / "buildings.png"
+    demo_main(["--view", "buildings", "--state", state, "--level", "half", "--team", "red", "--screenshot", str(out)])
+    assert out.exists() and out.stat().st_size > 10_000
