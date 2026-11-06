@@ -1,10 +1,11 @@
 {
-  "name": "March out and back",
+  "name": "Work and march",
   "scope": "team",
-  "description": "Send the army to the middle of the map, hold there, then call it home again.",
+  "description": "Put one Spud on each resource, then send the fighters to the middle of the map, hold, and call them home.",
   "root": {
     "type": "sequence",
     "children": [
+      {"type": "action", "name": "assign_spud_jobs", "args": {"compost": 1, "lumber": 1, "stone": 1}},
       {"type": "action", "name": "choose_rally", "args": {"key": "rally", "mode": "center"}},
       {"type": "action", "name": "wait", "args": {"ticks": 300}},
       {"type": "action", "name": "choose_rally", "args": {"key": "rally", "mode": "home"}},

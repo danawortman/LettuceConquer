@@ -1,0 +1,41 @@
+{
+  "name": "Gather for my job",
+  "scope": "unit",
+  "description": "Deliver a full load; otherwise gather the resource named by my job; otherwise deliver whatever I carry; otherwise wait.",
+  "root": {
+    "type": "selector",
+    "children": [
+      {
+        "type": "sequence",
+        "label": "deliver a full load",
+        "children": [
+          {"type": "condition", "name": "is_full"},
+          {"type": "action", "name": "find_dropoff", "args": {"key": "dropoff"}},
+          {"type": "action", "name": "move_next_to", "args": {"key": "dropoff"}},
+          {"type": "action", "name": "deposit", "args": {"key": "dropoff"}}
+        ]
+      },
+      {
+        "type": "sequence",
+        "label": "gather for my job",
+        "children": [
+          {"type": "condition", "name": "has_key", "args": {"key": "job"}},
+          {"type": "action", "name": "find_nearest_resource", "args": {"resource_key": "job", "key": "target"}},
+          {"type": "action", "name": "move_next_to", "args": {"key": "target"}},
+          {"type": "action", "name": "harvest", "args": {"key": "target"}}
+        ]
+      },
+      {
+        "type": "sequence",
+        "label": "deliver what I have",
+        "children": [
+          {"type": "condition", "name": "is_carrying"},
+          {"type": "action", "name": "find_dropoff", "args": {"key": "dropoff"}},
+          {"type": "action", "name": "move_next_to", "args": {"key": "dropoff"}},
+          {"type": "action", "name": "deposit", "args": {"key": "dropoff"}}
+        ]
+      },
+      {"type": "action", "name": "wait", "args": {"ticks": 10}}
+    ]
+  }
+}

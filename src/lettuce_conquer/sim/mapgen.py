@@ -17,7 +17,7 @@ GRASS, FIELD = "g", "f"
 GREENHOUSE = (2, 2, 3, 3)
 BASE_FEATURES = (("compost_heap", 7, 2, 2, 2), ("watering_can", 2, 7, 2, 2))
 SPAWN = (5, 5)
-DEMO_SPAWNS = ((6, 5), (5, 6), (6, 6))
+DEMO_SPAWNS = ((6, 5), (5, 6), (6, 6), (7, 5), (5, 7))
 BASE_ZONE = 10  # random features stay out of the corner square this many tiles wide
 
 # Which quadrants the armies start in, by army count (opposite corners for two).

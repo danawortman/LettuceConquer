@@ -87,6 +87,8 @@ def draw_world(screen: pygame.Surface, world: World, cam: Camera, alpha: float =
             if u is selected:
                 pygame.draw.ellipse(screen, (255, 250, 220), (sx - 46 * z, sy - 14 * z, 92 * z, 28 * z), max(2, round(4 * z)))
             art.blit_unit(screen, u.kind, "idle", c, (sx, sy), z)
+            if u.carry:
+                draw_load(screen, u.carry_kind, sx + 34 * z, sy - 150 * z, z)
         standing.append((gy, gx, u.id, draw_unit))
 
     margin = 260
@@ -94,6 +96,24 @@ def draw_world(screen: pygame.Surface, world: World, cam: Camera, alpha: float =
         sx, sy = cam.to_screen(gx, gy)
         if -margin < sx < sw + margin and -margin * 0.3 < sy < sh + margin * 1.6:
             draw()
+
+
+RESOURCE_COLORS = {"compost": (107, 74, 43), "lumber": (176, 122, 69), "stone": (169, 163, 155), "water": (111, 195, 232)}
+
+
+def draw_load(screen, kind: str, x: float, y: float, z: float) -> None:
+    """A small token above a Spud's head showing what it carries."""
+    r = max(4, round(16 * z))
+    color = RESOURCE_COLORS.get(kind, INK)
+    if kind == "lumber":  # a little log
+        rect = pygame.Rect(0, 0, r * 3, r * 2)
+        rect.center = (round(x), round(y))
+        pygame.draw.rect(screen, color, rect, border_radius=r)
+        pygame.draw.rect(screen, INK, rect, max(1, round(3 * z)), border_radius=r)
+        pygame.draw.circle(screen, (217, 185, 138), (rect.right - r, rect.centery), max(2, r * 2 // 3))
+    else:
+        pygame.draw.circle(screen, color, (round(x), round(y)), r)
+        pygame.draw.circle(screen, INK, (round(x), round(y)), r, max(1, round(3 * z)))
 
 
 def pick(world: World, cam: Camera, pos, alpha: float = 1.0):
@@ -113,13 +133,20 @@ def pick(world: World, cam: Camera, pos, alpha: float = 1.0):
 
 def draw_hud(screen, font, world: World, speed: int, paused: bool) -> None:
     w = screen.get_width()
-    bar = pygame.Surface((w, 34), pygame.SRCALPHA)
+    bar = pygame.Surface((w, 34 + 22 * len(world.teams)), pygame.SRCALPHA)
     bar.fill((246, 239, 217, 225))
     screen.blit(bar, (0, 0))
-    teams = "  ".join(t.color for t in world.teams)
-    text = (f"Lettuce Conquer   seed {world.seed}   tick {world.tick}   speed x{speed}{'   PAUSED' if paused else ''}"
-            f"   teams: {teams}")
+    text = f"Lettuce Conquer   seed {world.seed}   tick {world.tick}   speed x{speed}{'   PAUSED' if paused else ''}"
     screen.blit(font.render(text, True, INK), (10, 8))
+    for i, team in enumerate(world.teams):  # each team's stock
+        y = 32 + 22 * i
+        pygame.draw.circle(screen, pygame.Color(art.TEAM_COLORS[team.color]), (18, y + 8), 7)
+        x = 34
+        for kind, amount in team.stock.items():
+            pygame.draw.circle(screen, RESOURCE_COLORS[kind], (x + 6, y + 8), 6)
+            label = font.render(f"{kind} {amount}", True, INK)
+            screen.blit(label, (x + 16, y))
+            x += 30 + label.get_width()
     help_text = "Arrows/WASD or right-drag: pan   Wheel: zoom   Space: pause   [ ]: speed   Click: inspect   Tab: next unit   Esc: quit"
     hint = font.render(help_text, True, INK)
     back = pygame.Surface((hint.get_width() + 16, 26), pygame.SRCALPHA)
@@ -151,8 +178,9 @@ def draw_inspector(screen, font, small, world: World, agent) -> None:
     is_team = not hasattr(agent, "kind")
     who = f"{agent.color} team planner" if is_team else f"{agent.kind} #{agent.id} ({world.teams[agent.team].color})"
     lines = list(tree_lines(tree["root"]))
-    width, line_h = 430, 20
-    height = 86 + line_h * (len(lines) + 2 + len(agent.bb))
+    width, line_h = 470, 20
+    extra = {} if is_team else {"carrying": f"{agent.carry} {agent.carry_kind}" if agent.carry else "nothing"}
+    height = 86 + line_h * (len(lines) + 2 + len(agent.bb) + len(extra))
     panel = pygame.Surface((width, height), pygame.SRCALPHA)
     panel.fill((246, 239, 217, 235))
     pygame.draw.rect(panel, INK, panel.get_rect(), 2)
@@ -171,4 +199,7 @@ def draw_inspector(screen, font, small, world: World, agent) -> None:
     for key, value in agent.bb.items():
         panel.blit(small.render(f"  {key} = {value}", True, INK), (12, y))
         y += line_h
-    screen.blit(panel, (screen.get_width() - width - 10, 44))
+    for key, value in extra.items():
+        panel.blit(small.render(f"{key}: {value}", True, INK), (12, y))
+        y += line_h
+    screen.blit(panel, (screen.get_width() - width - 10, 44 + 22 * len(world.teams)))

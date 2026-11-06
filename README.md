@@ -20,7 +20,9 @@ this project in its own virtual environment.
 .venv/Scripts/python -m lettuce_conquer
 ```
 
-Behavior trees drive every army; you watch and inspect. Options: `--seed N` (map), `--teams 2|3|4`,
+Behavior trees drive every army; you watch and inspect. Each demo army has three Spuds (the team
+planner puts one on Compost, one on Lumber, one on Stone) and three fighters that follow the planner's
+rally point. The top bar shows each team's stock. Options: `--seed N` (map), `--teams 2|3|4`,
 `--one-worker` (start with one Spud per army, the real rule, instead of the demo army),
 `--ticks N` (fast-forward), `--zoom Z`.
 
@@ -42,8 +44,10 @@ Headless frame: `.venv/Scripts/python -m lettuce_conquer --ticks 200 --screensho
   - `mapgen.py`: seeded maps. One quarter is generated, then mirrored into the other three, so 2 to 4
     armies start on identical ground.
   - `pathfind.py`: A* on the tile grid.
-  - `world.py`: the world and its update. Each tick every team's planner tree runs, then every unit's
-    tree, then units move.
+  - `world.py`: the world and its update. Each tick stumps regrow, every team's planner tree runs, then
+    every unit's tree, then units move. Units never share a tile: a unit reserves the next tile before
+    stepping in, waits if it's taken, and re-plans around other units if the wait lasts.
+  - `data.py`: tunable numbers (speeds, carry size, resource amounts, regrowth, the Root Cellar bonus).
   - `bt.py`, `nodes.py`, `trees.py`: behavior trees (below).
 - `lettuce_conquer/game/`: the pygame window that draws the world and the tree inspector.
 
@@ -76,6 +80,24 @@ by setting a rally point the units read). Trees are JSON files in `src/lettuce_c
 - `sim.bt.validate(tree)` returns readable error messages; `sim.bt.node_catalog()` describes every node
   and its arguments as data.
 - Which tree each unit kind and planner uses is set in `sim/data.py` (`DEFAULT_TREES`).
+
+Node library, by area:
+
+| Area | Nodes |
+|---|---|
+| General | `has_key`, `set_key`, `clear_key`, `wait`, `succeed`, `fail` |
+| Moving | `move_to`, `move_next_to`, `pick_wander_spot`, `at_tile`, `team_has_key`, `copy_team_key` |
+| Gathering | `find_nearest_resource`, `harvest`, `is_full`, `is_carrying`, `find_dropoff`, `deposit` |
+| Team planner | `choose_rally`, `assign_spud_jobs` |
+
+## Economy
+
+- Spuds carry up to 10 of one resource and gather 1 every half second.
+- Compost Heaps (400) and Rocks (200 Stone) shrink through their Full, Half and Low looks and are then
+  gone for good. Trees (50 Lumber) turn into stumps and regrow after a minute.
+- Spuds deliver to their team's nearest grown Greenhouse or Root Cellar. Each grown Root Cellar adds
+  10% to every delivery, compounding (one: x1.1, two: x1.21).
+- Water arrives through irrigation channels, not by carrying (see Resources above).
 
 ## Run the art test scene
 

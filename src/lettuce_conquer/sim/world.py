@@ -1,7 +1,8 @@
 """The game world and its fixed-step update.
 
-Each tick: every team's planner tree runs, then every unit's tree (in id order), then units move.
-A unit only walks while one of its tree's move actions is running.
+Each tick: stumps regrow, every team's planner tree runs, then every unit's tree (in id order), then
+units move. A unit only walks while one of its tree's move actions is running. Units never share a
+tile: a unit reserves the next tile before stepping into it, and waits (then re-plans) if it's taken.
 """
 from __future__ import annotations
 
@@ -31,6 +32,11 @@ class Unit:
     path: list = field(default_factory=list)       # tiles still to walk, as [x, y]
     bb: dict = field(default_factory=dict)         # blackboard
     bt_state: dict = field(default_factory=dict)   # the tree's running memory
+    carry_kind: str = ""                           # resource being carried
+    carry: int = 0
+    reserved: list | None = None                   # the tile it is stepping into
+    wait_ticks: int = 0                            # ticks spent blocked by another unit
+    stuck: bool = False                            # blocked long enough to re-plan around units
     trace: dict = field(default_factory=dict)      # node statuses from the last tick (inspection only)
     move_requested: bool = False
 
@@ -57,6 +63,9 @@ class Thing:
     w: int = 1
     h: int = 1
     state: str = "full"
+    amount: int = 0       # resource left
+    max_amount: int = 0
+    regrow_at: int = -1   # tick a stump grows back (trees only)
 
 
 @dataclass
@@ -66,6 +75,7 @@ class Team:
     quadrant: int
     spawn: tuple
     tree: str                                       # the planner's behavior tree
+    stock: dict = field(default_factory=lambda: {r: 0 for r in data.RESOURCES})
     bb: dict = field(default_factory=dict)
     bt_state: dict = field(default_factory=dict)
     trace: dict = field(default_factory=dict)
@@ -82,7 +92,10 @@ class World:
         self.tree_names = dict(data.DEFAULT_TREES, **(trees or {}))
         self.trees = {name: tree_lib.load(name) for name in sorted(set(self.tree_names.values()))}
         self._next_id = 1
-        self.things = [Thing(self._new_id(), f.kind, f.x, f.y, f.w, f.h) for f in layout.features]
+        self.things: list[Thing] = []
+        for f in layout.features:
+            amount = data.YIELDS.get(f.kind, ("", 0))[1]
+            self.things.append(Thing(self._new_id(), f.kind, f.x, f.y, f.w, f.h, amount=amount, max_amount=amount))
         self.teams: list[Team] = []
         self.buildings: list[Building] = []
         self.units: list[Unit] = []
@@ -100,6 +113,18 @@ class World:
     def walkable(self, x: int, y: int) -> bool:
         return 0 <= x < self.width and 0 <= y < self.height and (x, y) not in self.blocked
 
+    def occupant(self, tile: tuple[int, int], ignore: Unit | None = None) -> Unit | None:
+        """The unit standing on (or stepping into) `tile`, other than `ignore`."""
+        tile = tuple(tile)
+        for u in self.units:
+            if u is not ignore and (self.tile_of(u) == tile or (u.reserved is not None and tuple(u.reserved) == tile)):
+                return u
+        return None
+
+    def free(self, x: int, y: int, ignore: Unit | None = None) -> bool:
+        """Walkable and nobody else on it."""
+        return self.walkable(x, y) and self.occupant((x, y), ignore) is None
+
     @staticmethod
     def center(x: int, y: int) -> tuple[int, int]:
         return x * T + T // 2, y * T + T // 2
@@ -107,6 +132,29 @@ class World:
     @staticmethod
     def tile_of(unit: Unit) -> tuple[int, int]:
         return unit.x // T, unit.y // T
+
+    @staticmethod
+    def at_center(unit: Unit) -> bool:
+        return unit.x % T == T // 2 and unit.y % T == T // 2
+
+    def entity(self, eid) -> Thing | Building | None:
+        for o in self.things:
+            if o.id == eid:
+                return o
+        for b in self.buildings:
+            if b.id == eid:
+                return b
+        return None
+
+    @staticmethod
+    def ring(o) -> list[tuple[int, int]]:
+        """The tiles touching an object's footprint (diagonals too), in a fixed order."""
+        x0, y0, x1, y1 = o.x - 1, o.y - 1, o.x + o.w, o.y + o.h
+        top = [(x, y0) for x in range(x0, x1 + 1)]
+        right = [(x1, y) for y in range(y0 + 1, y1 + 1)]
+        bottom = [(x, y1) for x in range(x1 - 1, x0 - 1, -1)]
+        left = [(x0, y) for y in range(y1 - 1, y0, -1)]
+        return top + right + bottom + left
 
     def nearest_walkable(self, x: int, y: int) -> tuple[int, int]:
         """The closest walkable tile to (x, y), searching outward in a fixed order."""
@@ -126,8 +174,35 @@ class World:
     def team_of(self, unit: Unit) -> Team:
         return self.teams[unit.team]
 
+    # ------------------------------------------------------------ economy
+    def take(self, thing: Thing, n: int) -> int:
+        """Remove up to n resource from a map feature; returns how much was taken."""
+        n = min(n, thing.amount)
+        thing.amount -= n
+        if thing.kind in data.TREES:
+            thing.state = "full" if thing.amount == thing.max_amount else ("half" if thing.amount else "stump")
+            if thing.amount == 0:
+                thing.regrow_at = self.tick + data.TREE_REGROW_TICKS
+        elif thing.amount == 0:  # compost heaps and rocks are used up for good
+            self.things.remove(thing)
+            self.blocked -= {(thing.x + i, thing.y + j) for i in range(thing.w) for j in range(thing.h)}
+        else:
+            thing.state = "full" if thing.amount * 3 > thing.max_amount * 2 else ("half" if thing.amount * 3 > thing.max_amount else "low")
+        return n
+
+    def deposit(self, team: Team, kind: str, amount: int) -> int:
+        """Add a delivery to the team's stock, boosted 10% (compounding) per grown Root Cellar."""
+        cellars = sum(1 for b in self.buildings if b.team == team.id and b.kind == "root_cellar" and b.state == "grown")
+        for _ in range(cellars):
+            amount = amount * data.ROOT_CELLAR_BONUS // 100
+        team.stock[kind] += amount
+        return amount
+
     # ------------------------------------------------------------ update
     def step(self) -> None:
+        for thing in self.things:
+            if thing.regrow_at >= 0 and self.tick >= thing.regrow_at:
+                thing.amount, thing.state, thing.regrow_at = thing.max_amount, "full", -1
         for team in self.teams:
             bt.run(self.trees[team.tree], bt.Context(self, team, team, "team"))
         for unit in self.units:
@@ -142,14 +217,23 @@ class World:
 
     def _move(self, unit: Unit) -> None:
         if not unit.path:
+            unit.reserved = None
             return
-        cx, cy = self.center(*unit.path[0])
+        nxt = tuple(unit.path[0])
+        if nxt != self.tile_of(unit) and unit.reserved != list(nxt):
+            if self.occupant(nxt, unit) is not None:  # someone's there: wait, and re-plan if it lasts
+                unit.wait_ticks += 1
+                unit.stuck = unit.wait_ticks >= data.STUCK_TICKS
+                return
+            unit.reserved = list(nxt)
+        cx, cy = self.center(*nxt)
         dx, dy = cx - unit.x, cy - unit.y
         dist = isqrt(dx * dx + dy * dy)
         speed = data.UNIT_SPEED[unit.kind]
         if dist <= speed:
             unit.x, unit.y = cx, cy
             unit.path.pop(0)
+            unit.reserved, unit.wait_ticks, unit.stuck = None, 0, False
         else:
             unit.x += dx * speed // dist
             unit.y += dy * speed // dist
