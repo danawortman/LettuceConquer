@@ -1,11 +1,13 @@
 """Drawing the world: ground, lakes, standing things in depth order, the HUD and the tree inspector."""
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 
 import pygame
 
-from lettuce_conquer import art
+from lettuce_conquer import art, fieldart
+from lettuce_conquer.terrain import DECAL_FRAME
 from lettuce_conquer.sim import bt
 from lettuce_conquer.sim.data import TILE
 from lettuce_conquer.sim.world import World
@@ -47,19 +49,84 @@ def unit_position(unit, alpha: float) -> tuple[float, float]:
     return unit.prev_x + (unit.x - unit.prev_x) * alpha, unit.prev_y + (unit.y - unit.prev_y) * alpha
 
 
+CHUNK = 8  # tiles per side of a cached ground chunk
+DECAL_WEIGHTS = (("tuft_a", 30), ("tuft_b", 18), ("clover", 10), ("daisies", 6), ("buttercups", 6),
+                 ("light_patch", 7), ("dark_patch", 5))
+
+
+class Ground:
+    """The ground layer (grass, scattered decorations, tilled fields), drawn once per zoom into chunks.
+
+    Decorations are placed at random positions, not on the grid, so the grass doesn't look tiled. They
+    are display-only and use their own random stream, never the simulation's.
+    """
+
+    def __init__(self, world: World):
+        rnd = random.Random(world.seed * 101 + 7)
+        kinds = [k for k, w in DECAL_WEIGHTS for _ in range(w)]
+        self.decals = []  # (name, world x, world y)
+        for ty in range(world.height):
+            for tx in range(world.width):
+                if world.tiles[ty][tx] == "g":
+                    for _ in range(rnd.choice((0, 1, 1, 2, 2, 3))):
+                        self.decals.append((rnd.choice(kinds), tx * TILE + rnd.uniform(0, TILE), ty * TILE + rnd.uniform(0, TILE)))
+        for t in world.things:  # pebbles scattered around rocks
+            if t.kind.startswith("rocks"):
+                for _ in range(2):
+                    self.decals.append(("pebbles", (t.x + 0.5) * TILE + rnd.uniform(-90, 90), (t.y + 0.5) * TILE + rnd.uniform(-70, 90)))
+        self.decals.sort(key=lambda d: ("patch" not in d[0], d[2]))  # soft patches underneath, then top to bottom
+        self.fields = list(world.fields)
+        self.seed = world.seed
+        self.zoom = None
+        self.chunks: dict = {}
+
+    def chunk(self, cx: int, cy: int, z: float) -> pygame.Surface:
+        if z != self.zoom:
+            self.zoom, self.chunks = z, {}
+        if (cx, cy) not in self.chunks:
+            ts = round(TILE * z)
+            surf = pygame.Surface((CHUNK * ts, CHUNK * ts))
+            grass = art.terrain_surface("grass", z)
+            for j in range(CHUNK):
+                for i in range(CHUNK):
+                    surf.blit(grass, (i * ts, j * ts))
+            x0, y0 = cx * CHUNK * TILE, cy * CHUNK * TILE
+            span = CHUNK * TILE
+            dx0, dy0, dw, dh = DECAL_FRAME
+            for name, wx, wy in self.decals:  # anything overlapping this chunk, so decals cross chunk edges cleanly
+                if x0 + dx0 - dw < wx < x0 + span - dx0 and y0 + dy0 - dh < wy < y0 + span - dy0:
+                    surf.blit(art.decal_surface(name, z), (round((wx - x0 + dx0) * z), round((wy - y0 + dy0) * z)))
+            for i, (fx, fy, fw, fh) in enumerate(self.fields):
+                px, py, pw, ph = (fx * TILE - fieldart.PAD, fy * TILE - fieldart.PAD,
+                                  fw * TILE + 2 * fieldart.PAD, fh * TILE + 2 * fieldart.PAD)
+                if px < x0 + span and px + pw > x0 and py < y0 + span and py + ph > y0:
+                    plot = art.field_surface(fw, fh, self.seed * 13 + i, z)
+                    surf.blit(plot, (round((px - x0) * z), round((py - y0) * z)))
+            self.chunks[(cx, cy)] = surf
+        return self.chunks[(cx, cy)]
+
+
+def nudge(world: World, thing) -> tuple[int, int, float]:
+    """A fixed, display-only offset and size for a tree or rock, so groves don't sit on the grid."""
+    h = (thing.x * 73856093 ^ thing.y * 19349663 ^ world.seed * 83492791) & 0xFFFFFFFF
+    dx, dy = h % 57 - 28, (h >> 8) % 31 - 22
+    sizes = (0.88, 1.0, 1.1) if thing.kind.endswith("tree") else (0.85, 1.0, 1.08)
+    return dx, dy, sizes[(h >> 16) % 3]
+
+
 def draw_world(screen: pygame.Surface, world: World, cam: Camera, alpha: float = 1.0, selected=None) -> None:
     screen.fill(PAPER)
     z = cam.zoom
     ts = round(TILE * z)
     ox, oy = round(cam.x * z), round(cam.y * z)
     sw, sh = screen.get_size()
-    x0, y0 = max(0, int(cam.x // TILE)), max(0, int(cam.y // TILE))
-    x1, y1 = min(world.width, int((cam.x + sw / z) // TILE) + 1), min(world.height, int((cam.y + sh / z) // TILE) + 1)
-    tiles = {"g": art.terrain_surface("grass", z), "f": art.terrain_surface("field", z)}
-    for ty in range(y0, y1):
-        row = world.tiles[ty]
-        for tx in range(x0, x1):
-            screen.blit(tiles[row[tx]], (tx * ts - ox, ty * ts - oy))
+    ground = world.__dict__.get("_ground")  # display-only cache, kept on the world it draws
+    if ground is None:
+        ground = world.__dict__["_ground"] = Ground(world)
+    span = CHUNK * ts
+    for cy in range(max(0, oy // span), min(-(-world.height // CHUNK), (oy + sh) // span + 1)):
+        for cx in range(max(0, ox // span), min(-(-world.width // CHUNK), (ox + sw) // span + 1)):
+            screen.blit(ground.chunk(cx, cy, z), (cx * span - ox, cy * span - oy))
 
     standing = []  # (ground y, ground x, id, draw)
     for thing in world.things:
@@ -70,9 +137,10 @@ def draw_world(screen: pygame.Surface, world: World, cam: Camera, alpha: float =
             standing.append((gy, gx, thing.id, lambda t=thing, g=(gx, gy): art.blit_building(
                 screen, t.kind, t.state, "blue", cam.to_screen(*g), z)))
         else:
-            gx, gy = (thing.x + 0.5) * TILE, thing.y * TILE + TREE_GROUND_OFFSET
-            standing.append((gy, gx, thing.id, lambda t=thing, g=(gx, gy): art.blit_terrain_object(
-                screen, f"{t.kind}_{t.state}", cam.to_screen(*g), z)))
+            dx, dy, size = nudge(world, thing)
+            gx, gy = (thing.x + 0.5) * TILE + dx, thing.y * TILE + TREE_GROUND_OFFSET + dy
+            standing.append((gy, gx, thing.id, lambda t=thing, g=(gx, gy), s=size: art.blit_terrain_object(
+                screen, f"{t.kind}_{t.state}", cam.to_screen(*g), z * s)))
     for b in world.buildings:
         gx, gy = (b.x + b.w / 2) * TILE, (b.y + b.h) * TILE
         color = world.teams[b.team].color

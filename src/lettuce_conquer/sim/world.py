@@ -12,7 +12,7 @@ from collections import deque
 from dataclasses import asdict, dataclass, field
 from math import isqrt
 
-from lettuce_conquer.sim import bt, data, mapgen
+from lettuce_conquer.sim import bt, data, mapgen, pathfind
 from lettuce_conquer.sim import trees as tree_lib
 from lettuce_conquer.sim.rng import Rng, seed_state
 
@@ -75,6 +75,7 @@ class Team:
     quadrant: int
     spawn: tuple
     tree: str                                       # the planner's behavior tree
+    rng_state: int = 0                              # the team's own random stream (identical for every team)
     stock: dict = field(default_factory=lambda: {r: 0 for r in data.RESOURCES})
     bb: dict = field(default_factory=dict)
     bt_state: dict = field(default_factory=dict)
@@ -89,6 +90,7 @@ class World:
         self.seed, self.tick = seed, 0
         self.rng = Rng(seed_state(seed ^ 0x5EED))  # its own stream, separate from map generation
         self.width, self.height, self.tiles = layout.width, layout.height, layout.tiles
+        self.fields = layout.fields  # tilled plots as (x, y, w, h); their tiles are also marked in `tiles`
         self.tree_names = dict(data.DEFAULT_TREES, **(trees or {}))
         self.trees = {name: tree_lib.load(name) for name in sorted(set(self.tree_names.values()))}
         self._next_id = 1
@@ -101,7 +103,8 @@ class World:
         self.units: list[Unit] = []
         for i, q in enumerate(mapgen.TEAM_QUADRANTS[teams]):
             base = layout.bases[q]
-            team = Team(i, data.TEAM_COLORS[i], q, tuple(base["spawn"]), self.tree_names["planner"])
+            team = Team(i, data.TEAM_COLORS[i], q, tuple(base["spawn"]), self.tree_names["planner"],
+                        rng_state=seed_state(seed ^ 0x7EA4))
             self.teams.append(team)
             self.buildings.append(Building(self._new_id(), i, "greenhouse", *base["greenhouse"]))
             kinds = ("spud",) + (data.DEMO_ARMY if demo_army else ())
@@ -156,16 +159,46 @@ class World:
         left = [(x0, y) for y in range(y1 - 1, y0, -1)]
         return top + right + bottom + left
 
-    def nearest_walkable(self, x: int, y: int) -> tuple[int, int]:
-        """The closest walkable tile to (x, y), searching outward in a fixed order."""
+    # ------------------------------------------------------------ fairness: mirrored tie-breaks
+    # Every army starts in a mirrored copy of the same quarter. Whenever a choice is a tie, it is broken
+    # in the team's own mirrored view of the map, so mirrored teams always make mirrored choices.
+    @staticmethod
+    def flips(team: Team) -> tuple[int, int]:
+        """(-1 or 1, -1 or 1): whether the team's quarter is mirrored left-right and top-bottom."""
+        return (-1 if team.quadrant in (1, 3) else 1), (-1 if team.quadrant in (2, 3) else 1)
+
+    def local(self, team: Team, x: int, y: int) -> tuple[int, int]:
+        """A tile as the team sees it: mapped back into the top-left quarter's orientation."""
+        sx, sy = self.flips(team)
+        return (x if sx > 0 else self.width - 1 - x), (y if sy > 0 else self.height - 1 - y)
+
+    def local_corner(self, team: Team, o) -> tuple[int, int]:
+        """An object's footprint corner as the team sees it (the mirror of its top-left)."""
+        sx, sy = self.flips(team)
+        return (o.x if sx > 0 else self.width - o.x - o.w), (o.y if sy > 0 else self.height - o.y - o.h)
+
+    def roll(self, team: Team, lo: int, hi: int) -> int:
+        """A random int in [lo, hi] from the team's own stream: mirrored teams roll the same numbers."""
+        rng = Rng(team.rng_state)
+        value = rng.randint(lo, hi)
+        team.rng_state = rng.state
+        return value
+
+    def steps_for(self, team: Team) -> tuple:
+        sx, sy = self.flips(team)
+        return tuple((dx * sx, dy * sy) for dx, dy in pathfind.STEPS)
+
+    def nearest_walkable(self, x: int, y: int, team: Team | None = None) -> tuple[int, int]:
+        """The closest walkable tile to (x, y), searching outward in a fixed order (mirrored for `team`)."""
         x, y = min(max(x, 0), self.width - 1), min(max(y, 0), self.height - 1)
+        sx, sy = self.flips(team) if team is not None else (1, 1)
         seen, queue = {(x, y)}, deque([(x, y)])
         while queue:
             here = queue.popleft()
             if self.walkable(*here):
                 return here
             hx, hy = here
-            for nxt in ((hx + 1, hy), (hx - 1, hy), (hx, hy + 1), (hx, hy - 1)):
+            for nxt in ((hx + sx, hy), (hx - sx, hy), (hx, hy + sy), (hx, hy - sy)):
                 if 0 <= nxt[0] < self.width and 0 <= nxt[1] < self.height and nxt not in seen:
                     seen.add(nxt)
                     queue.append(nxt)
@@ -234,9 +267,9 @@ class World:
             unit.x, unit.y = cx, cy
             unit.path.pop(0)
             unit.reserved, unit.wait_ticks, unit.stuck = None, 0, False
-        else:
-            unit.x += dx * speed // dist
-            unit.y += dy * speed // dist
+        else:  # round toward zero, so a step is the same size in every direction (mirror fairness)
+            unit.x += (1 if dx >= 0 else -1) * (abs(dx) * speed // dist)
+            unit.y += (1 if dy >= 0 else -1) * (abs(dy) * speed // dist)
 
     # ------------------------------------------------------------ setup helpers
     def _new_id(self) -> int:

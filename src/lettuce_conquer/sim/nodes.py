@@ -33,9 +33,9 @@ def _walk_to(ctx, target: tuple[int, int]) -> str:
             unit.stuck = False
             if world.occupant(target, unit) is not None:
                 return FAILURE
-            route = find_path(world.tile_of(unit), target, lambda x, y: world.free(x, y, unit))
+            route = find_path(world.tile_of(unit), target, lambda x, y: world.free(x, y, unit), world.steps_for(ctx.team))
         else:
-            route = find_path(world.tile_of(unit), target, world.walkable)
+            route = find_path(world.tile_of(unit), target, world.walkable, world.steps_for(ctx.team))
         if route is None:
             return FAILURE
         unit.path = [list(t) for t in route[1:]] or [list(target)]  # already on the tile: walk to its centre
@@ -107,8 +107,9 @@ def at_tile(ctx, key):
 def pick_wander_spot(ctx, key, radius):
     world = ctx.world
     hx, hy = _tile(ctx.bb.get("home")) or world.tile_of(ctx.agent)
-    for _ in range(20):
-        x, y = hx + world.rng.randint(-radius, radius), hy + world.rng.randint(-radius, radius)
+    sx, sy = world.flips(ctx.team)
+    for _ in range(20):  # the team's own stream, offsets mirrored: mirrored units pick mirrored spots
+        x, y = hx + sx * world.roll(ctx.team, -radius, radius), hy + sy * world.roll(ctx.team, -radius, radius)
         if world.free(x, y, ctx.agent):
             ctx.bb[key] = [x, y]
             return SUCCESS
@@ -138,7 +139,7 @@ def move_next_to(ctx, key):
         spots = [t for t in ring if world.free(*t, unit)]
         if not spots:
             return FAILURE
-        chosen = min(spots, key=lambda t: _octile(here, t))  # ties keep the ring's fixed order
+        chosen = min(spots, key=lambda t: (_octile(here, t), world.local(ctx.team, *t)))  # mirrored tie-break
     return _walk_to(ctx, chosen)
 
 
@@ -149,9 +150,11 @@ def copy_team_key(ctx, team_key, key, spread):
     spot = _tile(ctx.team.bb.get(team_key))
     if spot is None:
         return FAILURE
-    offsets = [(dx, dy) for r in range(spread + 1) for dy in range(-r, r + 1) for dx in range(-r, r + 1)
+    sx, sy = ctx.world.flips(ctx.team)
+    offsets = [(dx * sx, dy * sy) for r in range(spread + 1) for dy in range(-r, r + 1) for dx in range(-r, r + 1)
                if max(abs(dx), abs(dy)) == r]
-    start = ctx.agent.id % len(offsets)
+    rank = [u.id for u in ctx.world.units if u.team == ctx.agent.team].index(ctx.agent.id)
+    start = rank % len(offsets)
     for i in range(len(offsets)):
         dx, dy = offsets[(start + i) % len(offsets)]
         if ctx.world.free(spot[0] + dx, spot[1] + dy, ctx.agent):
@@ -181,9 +184,9 @@ def find_nearest_resource(ctx, resource, resource_key, key):
     best = None
     for t in world.things:
         if data.YIELDS.get(t.kind, ("",))[0] == wanted and t.amount > 0:
-            d = _distance_to(here, t)
-            if best is None or d < best[0]:
-                best = (d, t.id)
+            rank = (_distance_to(here, t), world.local_corner(ctx.team, t))
+            if best is None or rank < best[0]:
+                best = (rank, t.id)
     if best is None:
         return FAILURE
     ctx.bb[key] = best[1]
@@ -222,11 +225,11 @@ def harvest(ctx, key):
 def find_dropoff(ctx, key):
     world = ctx.world
     here = world.tile_of(ctx.agent)
-    spots = [(_distance_to(here, b), b.id) for b in world.buildings
+    spots = [(_distance_to(here, b), world.local_corner(ctx.team, b), b.id) for b in world.buildings
              if b.team == ctx.agent.team and b.kind in data.DROPOFFS and b.state == "grown"]
     if not spots:
         return FAILURE
-    ctx.bb[key] = min(spots)[1]
+    ctx.bb[key] = min(spots)[2]
     return SUCCESS
 
 
@@ -254,7 +257,7 @@ def choose_rally(ctx, key, mode):
         cx, cy = world.width // 2, world.height // 2
         sx = -3 if team.spawn[0] < cx else 2
         sy = -3 if team.spawn[1] < cy else 2
-        spot = world.nearest_walkable(cx + sx, cy + sy)
+        spot = world.nearest_walkable(cx + sx, cy + sy, team)
     else:
         return FAILURE
     ctx.bb[key] = list(spot)

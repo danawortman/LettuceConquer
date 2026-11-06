@@ -25,6 +25,7 @@ TEAM_QUADRANTS = {2: (0, 3), 3: (0, 1, 2), 4: (0, 1, 2, 3)}
 
 TREE_KINDS = ("apple_tree", "pine_tree")
 ROCK_KINDS = ("rocks_a", "rocks_b")
+NEIGHBORS = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class MapLayout:
     tiles: list[list[str]]       # tiles[y][x]
     features: list[Feature]      # everything that blocks movement, except buildings
     bases: list[dict]            # per quadrant: greenhouse (x, y, w, h), spawn, demo_spawns
+    fields: list[tuple]          # each tilled field as (x, y, w, h), for drawing it as one plot
 
 
 def generate(seed: int, size: int = QUADRANT) -> MapLayout:
@@ -83,11 +85,13 @@ def _quadrant(rng: Rng, size: int):
     taken.update([SPAWN, *DEMO_SPAWNS])
 
     # Fields are walkable ground, but nothing grows on top of them.
+    fields = []
     for _ in range(2):
         w, h = rng.randint(2, 4), rng.randint(2, 3)
         x, y = rng.randint(0, size - w), rng.randint(0, size - h)
         if fits(x, y, w, h) and not any(in_base(i, j) for i, j in footprint(x, y, w, h)):
             taken.update(footprint(x, y, w, h))
+            fields.append((x, y, w, h))
             for i, j in footprint(x, y, w, h):
                 tiles[j][i] = FIELD
     for _ in range(30):  # one lake, away from the base
@@ -97,25 +101,36 @@ def _quadrant(rng: Rng, size: int):
         x, y = rng.randint(0, size - 2), rng.randint(0, size - 2)
         if not in_base(x, y) and place("compost_heap", x, y, 2, 2):
             break
-    for clumps, (kinds, count, radius) in ((3, (TREE_KINDS, (4, 7), 2)), (2, (ROCK_KINDS, (2, 3), 1))):
-        for _ in range(clumps):
+    def grow(pick_kind, count):
+        """An organic clump: start on a free tile, then keep adding beside a random member."""
+        for _ in range(30):
             cx, cy = rng.randint(0, size - 1), rng.randint(0, size - 1)
-            if in_base(cx, cy):
-                continue
-            want, placed = rng.randint(*count), 0
-            for _ in range(want * 4):
-                x, y = cx + rng.randint(-radius, radius), cy + rng.randint(-radius, radius)
-                if not in_base(x, y) and place(rng.choice(kinds), x, y):
-                    placed += 1
-                    if placed == want:
-                        break
-    return tiles, features
+            if not in_base(cx, cy) and place(pick_kind(), cx, cy):
+                break
+        else:
+            return
+        group, want = [(cx, cy)], rng.randint(*count)
+        for _ in range(want * 8):
+            if len(group) >= want:
+                break
+            gx, gy = rng.choice(group)
+            dx, dy = rng.choice(NEIGHBORS)
+            if not in_base(gx + dx, gy + dy) and place(pick_kind(), gx + dx, gy + dy):
+                group.append((gx + dx, gy + dy))
+
+    for _ in range(3):  # groves: mostly one kind of tree, a few of the other
+        main, other = (TREE_KINDS if rng.randint(0, 1) else TREE_KINDS[::-1])
+        grow(lambda: other if rng.randint(1, 100) <= 20 else main, (6, 12))
+    for _ in range(3):  # rock clusters
+        grow(lambda: rng.choice(ROCK_KINDS), (3, 6))
+    return tiles, features, fields
 
 
-def _mirror(tiles, features, size) -> MapLayout:
+def _mirror(tiles, features, fields, size) -> MapLayout:
     width = height = size * 2
     full = [[GRASS] * width for _ in range(height)]
     all_features: list[Feature] = []
+    all_fields = []
     bases = []
     for q in range(4):
         fx, fy = q in (1, 3), q in (2, 3)
@@ -125,11 +140,12 @@ def _mirror(tiles, features, size) -> MapLayout:
             for x in range(size):
                 full[my(y)][mx(x)] = tiles[y][x]
         all_features += [Feature(f.kind, mx(f.x, f.w), my(f.y, f.h), f.w, f.h) for f in features]
+        all_fields += [(mx(x, w), my(y, h), w, h) for x, y, w, h in fields]
         gx, gy, gw, gh = GREENHOUSE
         bases.append({"quadrant": q, "greenhouse": (mx(gx, gw), my(gy, gh), gw, gh),
                       "spawn": (mx(SPAWN[0]), my(SPAWN[1])),
                       "demo_spawns": [(mx(x), my(y)) for x, y in DEMO_SPAWNS]})
-    return MapLayout(width, height, full, all_features, bases)
+    return MapLayout(width, height, full, all_features, bases, all_fields)
 
 
 def _connected(layout: MapLayout) -> bool:

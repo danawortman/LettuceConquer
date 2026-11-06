@@ -30,6 +30,24 @@ def test_map_is_mirrored_into_four_identical_quarters(seed):
         assert (kind, x, h - y - fh, fw, fh) in spots
 
 
+@pytest.mark.parametrize("seed", [1, 2, 7, 99])
+def test_fields_are_mirrored_and_match_the_tiles(seed):
+    layout = mapgen.generate(seed)
+    w, h = layout.width, layout.height
+    fields = set(layout.fields)
+    for x, y, fw, fh in fields:
+        assert (w - x - fw, y, fw, fh) in fields and (x, h - y - fh, fw, fh) in fields
+        assert all(layout.tiles[y + j][x + i] == mapgen.FIELD for i in range(fw) for j in range(fh))
+
+
+def test_groves_and_rock_clusters_are_clumped():
+    layout = mapgen.generate(7)
+    for kinds in (mapgen.TREE_KINDS, mapgen.ROCK_KINDS):
+        spots = {(f.x, f.y) for f in layout.features if f.kind in kinds}
+        lonely = [s for s in spots if not any((s[0] + dx, s[1] + dy) in spots for dx, dy in mapgen.NEIGHBORS)]
+        assert len(spots) >= 8 and not lonely
+
+
 def test_same_seed_same_map_different_seed_different_map():
     assert mapgen.generate(5) == mapgen.generate(5)
     assert mapgen.generate(5).features != mapgen.generate(6).features

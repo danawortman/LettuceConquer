@@ -15,8 +15,10 @@ def _octile(a, b):
 
 
 def find_path(start: tuple[int, int], goal: tuple[int, int],
-              walkable: Callable[[int, int], bool]) -> list[tuple[int, int]] | None:
-    """Tiles from start to goal inclusive, or None if the goal can't be reached."""
+              walkable: Callable[[int, int], bool], steps=STEPS) -> list[tuple[int, int]] | None:
+    """Tiles from start to goal inclusive, or None if the goal can't be reached.
+    `steps` sets the order neighbours are tried in, which decides ties between equally short routes;
+    mirrored teams pass mirrored steps (World.steps_for) so they pick mirrored routes."""
     start, goal = tuple(start), tuple(goal)
     if not walkable(*goal):
         return None
@@ -37,7 +39,7 @@ def find_path(start: tuple[int, int], goal: tuple[int, int],
         if g > cost[here]:
             continue
         x, y = here
-        for dx, dy in STEPS:
+        for dx, dy in steps:
             nxt = (x + dx, y + dy)
             if not walkable(*nxt):
                 continue

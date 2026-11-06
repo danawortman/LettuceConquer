@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-70 -50 140 100" width="140" height="100">
+  <!-- Lettuce Conquer terrain: grass decoration pebbles, centered on (0, 0). 120 px per tile. Neutral, no team colors. Inline attributes only: pygame/nanosvg ignores CSS and text. -->
+  <g><ellipse cx="-8" cy="2" rx="6" ry="4.5" fill="#b9b3a8" stroke="#8f897f" stroke-width="1.5"/><ellipse cx="6" cy="-3" rx="4.5" ry="3.5" fill="#c8c3bb" stroke="#8f897f" stroke-width="1.5"/><ellipse cx="5" cy="6" rx="3" ry="2.5" fill="#b9b3a8" stroke="#8f897f" stroke-width="1.2"/></g>
+</svg>

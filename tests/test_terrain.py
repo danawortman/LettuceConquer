@@ -7,11 +7,13 @@ import pytest
 
 from lettuce_conquer import art
 from lettuce_conquer.buildings import CATALOG
-from lettuce_conquer.terrain import GROUND_TILES, LAKE_FOOTPRINT, OBJECT_FRAME, OBJECTS, overlay_files
+from lettuce_conquer import fieldart
+from lettuce_conquer.terrain import DECAL_FRAME, DECALS, GROUND_TILES, LAKE_FOOTPRINT, OBJECT_FRAME, OBJECTS, overlay_files
 
 TERRAIN_DIR = Path(art.UNIT_DIR).parent / "terrain"
 OBJECT_STEMS = [f"{o.key}_{s}" for o in OBJECTS for s in o.states]
-ALL_STEMS = list(GROUND_TILES) + overlay_files() + ["lake"] + OBJECT_STEMS
+DECAL_STEMS = [f"decal_{d}" for d in DECALS]
+ALL_STEMS = list(GROUND_TILES) + overlay_files() + ["lake"] + OBJECT_STEMS + DECAL_STEMS
 
 
 def _text(stem):
@@ -66,6 +68,29 @@ def test_objects_stay_inside_their_frame(stem):
     rects = pygame.mask.from_surface(_load(stem)).get_bounding_rects()
     box = rects[0].unionall(rects[1:])
     assert box.left > 0 and box.top > 0 and box.right < w and box.bottom < h
+
+
+@pytest.mark.parametrize("stem", DECAL_STEMS)
+def test_decals_stay_inside_their_frame(stem):
+    x, y, w, h = DECAL_FRAME
+    assert f'viewBox="{x} {y} {w} {h}"' in _text(stem)
+    rects = pygame.mask.from_surface(_load(stem), 1).get_bounding_rects()  # count faint, see-through patches too
+    box = rects[0].unionall(rects[1:])
+    assert box.left > 0 and box.top > 0 and box.right < w and box.bottom < h
+
+
+@pytest.mark.parametrize("size", [(2, 2), (4, 3), (8, 3)])
+def test_field_plots_are_repeatable_safe_and_framed(size):
+    svg = fieldart.field_svg(*size, seed=5)
+    assert svg == fieldart.field_svg(*size, seed=5)
+    assert svg != fieldart.field_svg(*size, seed=6)
+    assert "<style" not in svg and "<text" not in svg and " A" not in svg and art.TEAM_KEY_COLOR not in svg
+    x, y, w, h = fieldart.frame(*size)
+    surf = pygame.image.load(io.BytesIO(svg.encode()), "x.svg")
+    assert surf.get_size() == (w, h)
+    rects = pygame.mask.from_surface(surf).get_bounding_rects()
+    box = rects[0].unionall(rects[1:])
+    assert box.left > 0 and box.top > 0 and box.right < w and box.bottom < h  # clods stay in the frame
 
 
 def test_inlets_belong_to_water_using_buildings():

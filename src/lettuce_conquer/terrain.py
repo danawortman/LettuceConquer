@@ -20,6 +20,11 @@ LAKE_FOOTPRINT = (3, 2)
 # Standing objects share one frame (viewBox x, y, width, height) with the object's ground point at (0, 0).
 OBJECT_FRAME = (-130, -250, 260, 280)
 
+# Grass decorations (assets/terrain/decal_<name>.svg), scattered over the ground at random positions
+# so the grass doesn't look like a grid. Centered on (0, 0) in this frame.
+DECALS = ("tuft_a", "tuft_b", "clover", "daisies", "buttercups", "pebbles", "light_patch", "dark_patch")
+DECAL_FRAME = (-70, -50, 140, 100)
+
 
 @dataclass(frozen=True)
 class TerrainObject:

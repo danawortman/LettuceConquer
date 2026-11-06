@@ -7,8 +7,9 @@ from pathlib import Path
 
 import pygame
 
+from lettuce_conquer import fieldart
 from lettuce_conquer.buildings import BUILDINGS, FRAMES
-from lettuce_conquer.terrain import GROUND_TILES, LAKE_FOOTPRINT, OBJECT_FRAME
+from lettuce_conquer.terrain import DECAL_FRAME, GROUND_TILES, LAKE_FOOTPRINT, OBJECT_FRAME
 
 UNIT_DIR = Path(__file__).parent / "assets" / "units"
 BUILDING_DIR = Path(__file__).parent / "assets" / "buildings"
@@ -90,6 +91,20 @@ def terrain_surface(stem: str, scale: float) -> pygame.Surface:
         fw, fh = OBJECT_FRAME[2:]
     w, h = max(1, round(fw * scale)), max(1, round(fh * scale))
     return _rasterize(TERRAIN_DIR / f"{stem}.svg", "blue", w, h)
+
+
+def decal_surface(name: str, scale: float) -> pygame.Surface:
+    """A grass decoration (DECAL_FRAME, centered on its middle) rasterized at `scale`."""
+    fw, fh = DECAL_FRAME[2:]
+    return _rasterize(TERRAIN_DIR / f"decal_{name}.svg", "blue", max(1, round(fw * scale)), max(1, round(fh * scale)))
+
+
+@lru_cache(maxsize=128)
+def field_surface(w_tiles: int, h_tiles: int, seed: int, scale: float) -> pygame.Surface:
+    """A freshly tilled plot for a w x h tile field. Its frame starts PAD units up and left of the field."""
+    _, _, fw, fh = fieldart.frame(w_tiles, h_tiles)
+    data = io.BytesIO(fieldart.field_svg(w_tiles, h_tiles, seed).encode("utf-8"))
+    return pygame.image.load_sized_svg(data, (max(1, round(fw * scale)), max(1, round(fh * scale))))
 
 
 def blit_terrain_object(dest: pygame.Surface, stem: str, ground: tuple[float, float], scale: float) -> pygame.Rect:

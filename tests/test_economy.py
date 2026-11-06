@@ -1,3 +1,5 @@
+import pytest
+
 from lettuce_conquer.sim import data
 from lettuce_conquer.sim.world import Building, World
 
@@ -15,12 +17,17 @@ def test_spuds_gather_all_three_resources():
         assert team.stock["water"] == 0  # water comes with irrigation, not gathering
 
 
-def test_mirrored_two_army_game_stays_even():
-    world = World(seed=3, teams=2)
-    for _ in range(1500):
+@pytest.mark.parametrize("seed", [1, 3, 4, 7, 11, 42])
+def test_mirrored_two_army_game_stays_an_exact_mirror(seed):
+    world = World(seed=seed, teams=2)
+    size = world.width * data.TILE
+    blue = [u for u in world.units if u.team == 0]
+    red = [u for u in world.units if u.team == 1]
+    for _ in range(1200):
         world.step()
-    blue, red = world.teams
-    assert blue.stock == red.stock
+        for b, r in zip(blue, red):  # every unit stands where its mirrored twin does
+            assert (size - b.x, size - b.y, b.carry) == (r.x, r.y, r.carry), (world.tick, b.kind)
+    assert world.teams[0].stock == world.teams[1].stock
 
 
 def test_units_never_share_a_tile():
