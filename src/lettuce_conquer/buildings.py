@@ -28,6 +28,13 @@ class BuildingType:
             return RESOURCE_LEVELS
         return GROWTH_STATES + (("sprouting",) if self.sprouts else ())
 
+    @property
+    def inlet_tile(self) -> tuple[int, int] | None:
+        """Where an irrigation channel must end to water this building, as a (column, row) tile offset
+        from the footprint's top-left tile: directly in front of the left-hand column. Only buildings
+        that sprout units use water."""
+        return (0, self.footprint) if self.sprouts else None
+
 
 CATALOG: tuple[BuildingType, ...] = (
     BuildingType("greenhouse", "Greenhouse", 3, True, "spud"),

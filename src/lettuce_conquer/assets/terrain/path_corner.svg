@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- Lettuce Conquer terrain: path corner overlay (sides NE). 120 px per tile. Neutral, no team colors. Inline attributes only: pygame/nanosvg ignores CSS and text. -->
+  <g><circle cx="60" cy="60" r="42" fill="#b0946a"/><path d="M60 60 L60 0 M60 60 L120 60" fill="none" stroke="#b0946a" stroke-width="84" stroke-linecap="butt"/><circle cx="60" cy="60" r="37" fill="#d2b78a"/><path d="M60 60 L60 0 M60 60 L120 60" fill="none" stroke="#d2b78a" stroke-width="74" stroke-linecap="butt"/><circle cx="69" cy="61" r="4" fill="#b8b2a8" stroke="#2b2118" stroke-width="1.5"/><circle cx="57" cy="10" r="3" fill="#b8b2a8" stroke="#2b2118" stroke-width="1.5"/><circle cx="58" cy="61" r="5" fill="#b8b2a8" stroke="#2b2118" stroke-width="1.5"/><circle cx="110" cy="78" r="3" fill="#b8b2a8" stroke="#2b2118" stroke-width="1.5"/></g>
+</svg>

@@ -93,6 +93,32 @@ frames.
 Art is drawn at 120 px per grid tile, the same scale as the units. Buildings of one footprint
 share a frame (see `FRAMES` in `buildings.py`) with the building's ground point at `(0, 0)`.
 
+Buildings that sprout units need water. Each has a wooden sluice-gate **inlet** at the front of
+its left-hand tile; an irrigation channel waters the building when it ends on the tile directly in
+front of the inlet (`BuildingType.inlet_tile`).
+
+### Terrain
+
+Terrain art lives in `src/lettuce_conquer/assets/terrain/`; the catalog is
+`src/lettuce_conquer/terrain.py`. Everything is neutral (no team colors).
+
+- **Ground tiles** (`grass`, `field`): solid 120 x 120 squares with hard edges.
+- **Path and channel pieces** (`path_<piece>`, `channel_<piece>_<dry|wet>`): see-through overlays
+  drawn on top of a ground tile. Each piece is drawn in one orientation (see `PIECE_SIDES`); rotate it
+  in 90-degree steps for the others. Pieces meet exactly at tile edges, so junctions join cleanly.
+- **Lake** (`lake`): one drawing covering 3 x 2 tiles, placed by its top-left tile corner.
+- **Standing objects** (trees, rocks, fallen-unit compost piles): one shared frame with the ground
+  point at `(0, 0)`, like buildings.
+
+### Resources
+
+| Resource | Where it comes from | Spent on |
+|---|---|---|
+| Compost | Compost Heaps, and piles left by fallen units | Sprouting units |
+| Lumber | Trees (they regrow from stumps) | Buildings, irrigation channels, upgrades |
+| Stone | Rocks | Buildings, upgrades |
+| Water | Watering Cans, through irrigation channels; refill cans from a lake | Sprouting units |
+
 ### SVG rules
 
 pygame loads SVGs with nanosvg, which has limits:

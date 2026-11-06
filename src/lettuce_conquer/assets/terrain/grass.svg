@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- Lettuce Conquer terrain: grass tile. 120 px per tile. Neutral, no team colors. Inline attributes only: pygame/nanosvg ignores CSS and text. -->
+  <g><rect x="0" y="0" width="120" height="120" rx="0" fill="#a8cf74" stroke="#2b2118" stroke-width="0"/><path d="M49 33 l3 -9 l3 9 l3 -7 l3 7 M58 97 l3 -9 l3 9 l3 -7 l3 7 M14 23 l3 -9 l3 9 l3 -7 l3 7 M76 26 l3 -9 l3 9 l3 -7 l3 7 M54 88 l3 -9 l3 9 l3 -7 l3 7" fill="none" stroke="#86b35a" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/></g>
+</svg>
