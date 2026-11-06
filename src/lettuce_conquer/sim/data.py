@@ -6,7 +6,7 @@ TILE = 120  # world units per tile; the same as art pixels, so 1 world unit = 1 
 TEAM_COLORS = ("blue", "red", "purple", "yellow")
 
 # World units per tick (a tile is 120).
-UNIT_SPEED = {"spud": 10, "cabbage": 8, "pea": 10, "carrot": 14}
+UNIT_SPEED = {"spud": 40, "cabbage": 32, "pea": 40, "carrot": 56}
 
 # Tiles per side of one map quadrant; maps are two quadrants wide and tall.
 QUADRANT = 20
