@@ -1,0 +1,13 @@
+{
+  "name": "Wander near home",
+  "scope": "unit",
+  "description": "Pick a random spot near home, walk there, rest a moment, repeat.",
+  "root": {
+    "type": "sequence",
+    "children": [
+      {"type": "action", "name": "pick_wander_spot", "args": {"key": "spot", "radius": 4}},
+      {"type": "action", "name": "move_to", "args": {"key": "spot"}},
+      {"type": "action", "name": "wait", "args": {"ticks": 15}}
+    ]
+  }
+}

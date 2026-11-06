@@ -14,6 +14,69 @@ python -m venv .venv
 Use **pygame-ce**, not legacy `pygame`. Both install a module called `pygame`, so keep
 this project in its own virtual environment.
 
+## Run the game
+
+```bash
+.venv/Scripts/python -m lettuce_conquer
+```
+
+Behavior trees drive every army; you watch and inspect. Options: `--seed N` (map), `--teams 2|3|4`,
+`--one-worker` (start with one Spud per army, the real rule, instead of the demo army),
+`--ticks N` (fast-forward), `--zoom Z`.
+
+- Arrow keys / WASD, or right-drag: pan
+- Mouse wheel: zoom
+- Click a unit: show its behavior tree, colored by what ran this tick, and its blackboard
+- Click a Greenhouse: show that team's planner tree
+- `Tab`: jump to the next unit
+- `Space`: pause; `[` / `]`: slower / faster
+- `Esc`: quit
+
+Headless frame: `.venv/Scripts/python -m lettuce_conquer --ticks 200 --screenshot screenshots/game.png`
+
+## How the game is built
+
+- `lettuce_conquer/sim/`: the simulation, with no pygame. It runs in fixed ticks (10 per second) with
+  whole-number math and a seeded random generator, so the same seed and trees always play out the same
+  way (`World.state_hash()` lets tests check that).
+  - `mapgen.py`: seeded maps. One quarter is generated, then mirrored into the other three, so 2 to 4
+    armies start on identical ground.
+  - `pathfind.py`: A* on the tile grid.
+  - `world.py`: the world and its update. Each tick every team's planner tree runs, then every unit's
+    tree, then units move.
+  - `bt.py`, `nodes.py`, `trees.py`: behavior trees (below).
+- `lettuce_conquer/game/`: the pygame window that draws the world and the tree inspector.
+
+## Behavior trees
+
+Each unit runs a behavior tree, and each team has a planner tree that coordinates its army (for example
+by setting a rally point the units read). Trees are JSON files in `src/lettuce_conquer/trees/`:
+
+```json
+{
+  "name": "Wander near home",
+  "scope": "unit",
+  "root": {
+    "type": "sequence",
+    "children": [
+      {"type": "action", "name": "pick_wander_spot", "args": {"key": "spot", "radius": 4}},
+      {"type": "action", "name": "move_to", "args": {"key": "spot"}},
+      {"type": "action", "name": "wait", "args": {"ticks": 15}}
+    ]
+  }
+}
+```
+
+- **Composites:** `sequence` (runs children until one fails), `selector` (until one succeeds). Both
+  remember a running child and resume it next tick.
+- **Decorators** (one `child`): `inverter`, `succeeder`, `repeat` (optional `times`), `cooldown` (`ticks`).
+- **Leaves:** `condition` and `action` nodes from the node library in `sim/nodes.py`, with `args`.
+- Every node returns `success`, `failure` or `running`. Each agent keeps its own blackboard (`bb`) and
+  running memory, so many units can share one tree. Tiles in blackboards are `[x, y]` lists.
+- `sim.bt.validate(tree)` returns readable error messages; `sim.bt.node_catalog()` describes every node
+  and its arguments as data.
+- Which tree each unit kind and planner uses is set in `sim/data.py` (`DEFAULT_TREES`).
+
 ## Run the art test scene
 
 ```bash

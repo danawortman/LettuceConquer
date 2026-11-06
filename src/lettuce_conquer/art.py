@@ -8,14 +8,16 @@ from pathlib import Path
 import pygame
 
 from lettuce_conquer.buildings import BUILDINGS, FRAMES
+from lettuce_conquer.terrain import GROUND_TILES, LAKE_FOOTPRINT, OBJECT_FRAME
 
 UNIT_DIR = Path(__file__).parent / "assets" / "units"
 BUILDING_DIR = Path(__file__).parent / "assets" / "buildings"
+TERRAIN_DIR = Path(__file__).parent / "assets" / "terrain"
 STATES = ("idle", "battle")
 
 # Team-colored regions in every SVG are drawn in this key color and swapped at load time.
 TEAM_KEY_COLOR = "#3a7bd5"
-TEAM_COLORS = {"blue": "#3a7bd5", "red": "#d0453a"}
+TEAM_COLORS = {"blue": "#3a7bd5", "red": "#d0453a", "purple": "#8f5fc8", "yellow": "#e0b030"}
 
 # Every unit SVG shares one frame (viewBox="-200 40 340 220") with the feet at (0, 248),
 # so in frame pixels the feet are at (200, 208) for any unit.
@@ -75,4 +77,23 @@ def blit_building(dest: pygame.Surface, building: str, state: str, team: str,
     """Draw the building so its ground point lands on `ground`. Returns the area drawn."""
     fx, fy, _, _ = FRAMES[BUILDINGS[building].footprint]
     surf = building_surface(building, state, team, scale)
+    return dest.blit(surf, (round(ground[0] + fx * scale), round(ground[1] + fy * scale)))
+
+
+def terrain_surface(stem: str, scale: float) -> pygame.Surface:
+    """A terrain file (tile, overlay, lake or standing object) rasterized at `scale`. Terrain is neutral."""
+    if stem == "lake":
+        fw, fh = (n * 120 for n in LAKE_FOOTPRINT)
+    elif stem in GROUND_TILES or stem.startswith(("path_", "channel_")):
+        fw, fh = 120, 120
+    else:
+        fw, fh = OBJECT_FRAME[2:]
+    w, h = max(1, round(fw * scale)), max(1, round(fh * scale))
+    return _rasterize(TERRAIN_DIR / f"{stem}.svg", "blue", w, h)
+
+
+def blit_terrain_object(dest: pygame.Surface, stem: str, ground: tuple[float, float], scale: float) -> pygame.Rect:
+    """Draw a standing terrain object (tree, rocks, remains) so its ground point lands on `ground`."""
+    fx, fy = OBJECT_FRAME[:2]
+    surf = terrain_surface(stem, scale)
     return dest.blit(surf, (round(ground[0] + fx * scale), round(ground[1] + fy * scale)))

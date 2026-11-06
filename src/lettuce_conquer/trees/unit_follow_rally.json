@@ -1,0 +1,29 @@
+{
+  "name": "Follow the rally point",
+  "scope": "unit",
+  "description": "Go to the team planner's rally point when there is one; otherwise wander near home.",
+  "root": {
+    "type": "selector",
+    "children": [
+      {
+        "type": "sequence",
+        "label": "go to the rally point",
+        "children": [
+          {"type": "condition", "name": "team_has_key", "args": {"key": "rally"}},
+          {"type": "action", "name": "copy_team_key", "args": {"team_key": "rally", "key": "goal", "spread": 1}},
+          {"type": "action", "name": "move_to", "args": {"key": "goal"}},
+          {"type": "action", "name": "wait", "args": {"ticks": 5}}
+        ]
+      },
+      {
+        "type": "sequence",
+        "label": "wander near home",
+        "children": [
+          {"type": "action", "name": "pick_wander_spot", "args": {"key": "spot", "radius": 3}},
+          {"type": "action", "name": "move_to", "args": {"key": "spot"}},
+          {"type": "action", "name": "wait", "args": {"ticks": 15}}
+        ]
+      }
+    ]
+  }
+}

@@ -16,13 +16,14 @@ dependencies = ["pygame-ce>=2.5"]
 dev = ["pytest>=8"]
 
 [project.scripts]
+lettuce-conquer = "lettuce_conquer.game.app:main"
 lettuce-conquer-demo = "lettuce_conquer.demo:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-lettuce_conquer = ["assets/units/*.svg", "assets/buildings/*.svg", "assets/terrain/*.svg"]
+lettuce_conquer = ["assets/units/*.svg", "assets/buildings/*.svg", "assets/terrain/*.svg", "trees/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

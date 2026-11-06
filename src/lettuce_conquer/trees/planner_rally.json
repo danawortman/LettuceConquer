@@ -1,0 +1,14 @@
+{
+  "name": "March out and back",
+  "scope": "team",
+  "description": "Send the army to the middle of the map, hold there, then call it home again.",
+  "root": {
+    "type": "sequence",
+    "children": [
+      {"type": "action", "name": "choose_rally", "args": {"key": "rally", "mode": "center"}},
+      {"type": "action", "name": "wait", "args": {"ticks": 300}},
+      {"type": "action", "name": "choose_rally", "args": {"key": "rally", "mode": "home"}},
+      {"type": "action", "name": "wait", "args": {"ticks": 200}}
+    ]
+  }
+}
