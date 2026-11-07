@@ -8,26 +8,37 @@ def first(world, kind):
     return next(t for t in world.things if t.kind == kind)
 
 
+M2_TREES = {"spud": "unit_gather", "planner": "planner_rally"}  # gathering only: no building or sprouting
+
+
 def test_spuds_gather_all_three_resources():
-    world = World(seed=7, teams=2)
+    world = World(seed=7, teams=2, trees=M2_TREES)
     for _ in range(1500):
         world.step()
     for team in world.teams:
         assert team.stock["compost"] > 0 and team.stock["lumber"] > 0 and team.stock["stone"] > 0
-        assert team.stock["water"] == 0  # water comes with irrigation, not gathering
+        assert team.stock["water"] == 0  # water is what connected Watering Cans hold; nothing is connected yet
 
 
 @pytest.mark.parametrize("seed", [1, 3, 4, 7, 11, 42])
 def test_mirrored_two_army_game_stays_an_exact_mirror(seed):
     world = World(seed=seed, teams=2)
     size = world.width * data.TILE
-    blue = [u for u in world.units if u.team == 0]
-    red = [u for u in world.units if u.team == 1]
-    for _ in range(1200):
+    for _ in range(1500):
         world.step()
-        for b, r in zip(blue, red):  # every unit stands where its mirrored twin does
+        blue = [u for u in world.units if u.team == 0]
+        red = [u for u in world.units if u.team == 1]
+        assert [u.kind for u in blue] == [u.kind for u in red], world.tick
+        for b, r in zip(blue, red):  # every unit (sprouted ones too) stands where its mirrored twin does
             assert (size - b.x, size - b.y, b.carry) == (r.x, r.y, r.carry), (world.tick, b.kind)
-    assert world.teams[0].stock == world.teams[1].stock
+        assert world.teams[0].stock == world.teams[1].stock, world.tick
+    mirror = lambda x, y, w=1, h=1: (world.width - x - w, world.height - y - h)  # noqa: E731
+    blue_b = sorted((b.kind, b.x, b.y, b.state, b.progress) for b in world.buildings if b.team == 0)
+    red_b = sorted((b.kind, *mirror(b.x, b.y, b.w, b.h), b.state, b.progress) for b in world.buildings if b.team == 1)
+    assert blue_b == red_b
+    blue_c = sorted(((c.x, c.y), c.dug) for c in world.channels.values() if c.team == 0)
+    red_c = sorted((mirror(c.x, c.y), c.dug) for c in world.channels.values() if c.team == 1)
+    assert blue_c == red_c
 
 
 def test_units_never_share_a_tile():

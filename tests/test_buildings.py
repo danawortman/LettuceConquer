@@ -6,7 +6,7 @@ import pygame
 import pytest
 
 from lettuce_conquer import art
-from lettuce_conquer.buildings import BUILDINGS, CATALOG, FRAMES
+from lettuce_conquer.buildings import BUILDINGS, CATALOG, FRAMES, INLET_ART, INLET_FRAME
 from lettuce_conquer.demo import BUILDING_STATES
 from lettuce_conquer.demo import main as demo_main
 from lettuce_conquer.units import UNITS
@@ -25,7 +25,19 @@ def _load(text):
 
 def test_every_svg_belongs_to_a_catalog_state():
     on_disk = {p.stem for p in BUILDING_DIR.glob("*.svg")}
-    assert on_disk == {f"{k}_{s}" for k, s in CASES}
+    assert on_disk == {f"{k}_{s}" for k, s in CASES} | set(INLET_ART)
+
+
+@pytest.mark.parametrize("stem", INLET_ART)
+def test_inlet_art_is_safe_and_inside_its_frame(stem):
+    text = (BUILDING_DIR / f"{stem}.svg").read_text(encoding="utf-8")
+    assert "<style" not in text and "<text" not in text and art.TEAM_KEY_COLOR not in text
+    x, y, w, h = INLET_FRAME
+    assert f'viewBox="{x} {y} {w} {h}"' in text
+    surf = _load(text)
+    rects = pygame.mask.from_surface(surf).get_bounding_rects()
+    box = rects[0].unionall(rects[1:])
+    assert box.left > 0 and box.top > 0 and box.right < w and box.bottom < h
 
 
 @pytest.mark.parametrize("key,state", CASES)
@@ -81,3 +93,22 @@ def test_demo_buildings_view_screenshot(tmp_path, state):
     out = tmp_path / "buildings.png"
     demo_main(["--view", "buildings", "--state", state, "--level", "half", "--team", "red", "--screenshot", str(out)])
     assert out.exists() and out.stat().st_size > 10_000
+
+
+def test_flipped_building_is_a_mirror_on_the_same_ground_point():
+    dest = pygame.Surface((600, 500), pygame.SRCALPHA)
+    plain = art.blit_building(dest, "cabbage_patch", "grown", "blue", (300, 450), 1.0)
+    flipped = art.blit_building(dest, "cabbage_patch", "grown", "blue", (300, 450), 1.0, flip=True)
+    assert plain == flipped  # the frames are symmetric about the ground point
+    a = art.building_surface("cabbage_patch", "grown", "blue", 0.5)
+    b = art.building_surface("cabbage_patch", "grown", "blue", 0.5, flip=True)
+    w = a.get_width()
+    assert all(a.get_at((x, y)) == b.get_at((w - 1 - x, y)) for x in range(0, w, 7) for y in range(0, a.get_height(), 7))
+
+
+@pytest.mark.parametrize("stem", INLET_ART)
+def test_blit_inlet_puts_the_anchor_on_target(stem):
+    dest = pygame.Surface((300, 300), pygame.SRCALPHA)
+    drawn = art.blit_inlet(dest, stem, (150, 200), 1.0)
+    x, y, _, _ = INLET_FRAME
+    assert drawn.topleft == (150 + x, 200 + y)

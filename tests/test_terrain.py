@@ -98,3 +98,14 @@ def test_inlets_belong_to_water_using_buildings():
         assert (b.inlet_tile is not None) == bool(b.sprouts)
         if b.inlet_tile:
             assert b.inlet_tile == (0, b.footprint)  # directly in front of the left-hand column
+
+
+def test_piece_for_joins_every_combination_of_sides():
+    from lettuce_conquer.terrain import PIECE_SIDES, SIDES, piece_for
+    from itertools import combinations
+    for n in range(1, 5):
+        for combo in combinations(SIDES, n):
+            piece, turns = piece_for("".join(combo))
+            got = {SIDES[(SIDES.index(c) + turns) % 4] for c in PIECE_SIDES[piece]}
+            assert got == set(combo)
+    assert piece_for("") == ("end", 0)

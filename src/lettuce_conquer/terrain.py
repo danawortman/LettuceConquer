@@ -13,6 +13,18 @@ GROUND_TILES = ("grass", "field")
 # the tile edge, so neighbouring pieces join without seams.
 PIECE_SIDES = {"end": "S", "straight": "EW", "corner": "NE", "t": "EWS", "cross": "NESW"}
 CHANNEL_STATES = ("dry", "wet")  # dug but empty / connected to a Watering Can
+SIDES = "NESW"
+
+
+def piece_for(sides: str) -> tuple[str, int]:
+    """The piece and number of clockwise quarter turns that connect exactly `sides` (any of N, E, S, W).
+    A tile with no connections is drawn as an end piece."""
+    want = {s for s in sides if s in SIDES} or {"S"}
+    for piece, base in PIECE_SIDES.items():
+        for turns in range(4):
+            if {SIDES[(SIDES.index(c) + turns) % 4] for c in base} == want:
+                return piece, turns
+    raise ValueError(sides)
 
 # A lake is one drawing covering 3 x 2 tiles (viewBox 0 0 360 240), placed by its top-left tile corner.
 LAKE_FOOTPRINT = (3, 2)

@@ -51,7 +51,7 @@ class NodeSpec:
 NODES: dict[str, NodeSpec] = {}
 
 
-def node(kind: str, scope: str, doc: str, **args: Arg):
+def node(kind: str, scope: str, doc: str, /, **args: Arg):
     """Register a library node. The function receives the context and its args as keywords."""
     def register(fn):
         NODES[fn.__name__] = NodeSpec(fn.__name__, kind, scope, doc, args, fn)

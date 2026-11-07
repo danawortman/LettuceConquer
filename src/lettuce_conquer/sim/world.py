@@ -1,8 +1,9 @@
 """The game world and its fixed-step update.
 
 Each tick: stumps regrow, every team's planner tree runs, then every unit's tree (in id order), then
-units move. A unit only walks while one of its tree's move actions is running. Units never share a
-tile: a unit reserves the next tile before stepping into it, and waits (then re-plans) if it's taken.
+sprouting buildings draw water and finish units, then units move. A unit only walks while one of its
+tree's move actions is running. Units never share a tile: a unit reserves the next tile before
+stepping into it, and waits (then re-plans) if it's taken.
 """
 from __future__ import annotations
 
@@ -12,11 +13,13 @@ from collections import deque
 from dataclasses import asdict, dataclass, field
 from math import isqrt
 
+from lettuce_conquer.buildings import BUILDINGS
 from lettuce_conquer.sim import bt, data, mapgen, pathfind
 from lettuce_conquer.sim import trees as tree_lib
 from lettuce_conquer.sim.rng import Rng, seed_state
 
 T = data.TILE
+ORTHOGONAL = pathfind.STEPS[:4]
 
 
 @dataclass
@@ -50,7 +53,14 @@ class Building:
     y: int
     w: int
     h: int
-    state: str = "grown"
+    state: str = "grown"     # planted -> sprout -> grown; "sprouting" while a unit grows inside
+    progress: int = 0        # tending done, in points (data.PACE per Spud-tick, more on fertile ground)
+    work: int = 0            # points of tending needed to be grown
+    fertile: int = 0         # percent faster growing and sprouting, from field tiles under it
+    can: int = 0             # the Watering Can its channel was planned from (0: none yet)
+    sprout_kind: str = ""    # unit being sprouted
+    sprout_left: int = 0     # points of sprouting left (data.PACE a tick, more on fertile ground)
+    water_owed: int = 0      # water still to draw for it
 
 
 @dataclass
@@ -63,9 +73,21 @@ class Thing:
     w: int = 1
     h: int = 1
     state: str = "full"
-    amount: int = 0       # resource left
+    amount: int = 0       # resource left (water, for a Watering Can)
     max_amount: int = 0
     regrow_at: int = -1   # tick a stump grows back (trees only)
+
+
+@dataclass
+class Channel:
+    """One tile of irrigation ditch. Planned first, then dug by Spuds; water flows once dug."""
+    x: int
+    y: int
+    team: int       # who planned it (and digs it)
+    order: int      # digging order (planned routes are dug from the can outward)
+    dug: bool = False
+    progress: int = 0
+    paid: bool = False
 
 
 @dataclass
@@ -96,8 +118,10 @@ class World:
         self._next_id = 1
         self.things: list[Thing] = []
         for f in layout.features:
-            amount = data.YIELDS.get(f.kind, ("", 0))[1]
+            amount = data.CAN_CAPACITY if f.kind == "watering_can" else data.YIELDS.get(f.kind, ("", 0))[1]
             self.things.append(Thing(self._new_id(), f.kind, f.x, f.y, f.w, f.h, amount=amount, max_amount=amount))
+        self.channels: dict[tuple[int, int], Channel] = {}
+        self._channel_order = 0
         self.teams: list[Team] = []
         self.buildings: list[Building] = []
         self.units: list[Unit] = []
@@ -106,7 +130,8 @@ class World:
             team = Team(i, data.TEAM_COLORS[i], q, tuple(base["spawn"]), self.tree_names["planner"],
                         rng_state=seed_state(seed ^ 0x7EA4))
             self.teams.append(team)
-            self.buildings.append(Building(self._new_id(), i, "greenhouse", *base["greenhouse"]))
+            work = data.BUILD_WORK["greenhouse"] * data.PACE
+            self.buildings.append(Building(self._new_id(), i, "greenhouse", *base["greenhouse"], work=work, progress=work))
             kinds = ("spud",) + (data.DEMO_ARMY if demo_army else ())
             for kind, tile in zip(kinds, [base["spawn"], *base["demo_spawns"]]):
                 self._spawn(team, kind, *tile)
@@ -167,6 +192,10 @@ class World:
         """(-1 or 1, -1 or 1): whether the team's quarter is mirrored left-right and top-bottom."""
         return (-1 if team.quadrant in (1, 3) else 1), (-1 if team.quadrant in (2, 3) else 1)
 
+    def flips_at(self, o) -> tuple[int, int]:
+        """The same, for whichever quarter of the map an object sits in."""
+        return (1 if 2 * o.x + o.w <= self.width else -1), (1 if 2 * o.y + o.h <= self.height else -1)
+
     def local(self, team: Team, x: int, y: int) -> tuple[int, int]:
         """A tile as the team sees it: mapped back into the top-left quarter's orientation."""
         sx, sy = self.flips(team)
@@ -184,18 +213,20 @@ class World:
         team.rng_state = rng.state
         return value
 
-    def steps_for(self, team: Team) -> tuple:
+    def steps_for(self, team: Team, steps=pathfind.STEPS) -> tuple:
         sx, sy = self.flips(team)
-        return tuple((dx * sx, dy * sy) for dx, dy in pathfind.STEPS)
+        return tuple((dx * sx, dy * sy) for dx, dy in steps)
 
-    def nearest_walkable(self, x: int, y: int, team: Team | None = None) -> tuple[int, int]:
-        """The closest walkable tile to (x, y), searching outward in a fixed order (mirrored for `team`)."""
+    def nearest_walkable(self, x: int, y: int, team: Team | None = None, ignore: Unit | None = None,
+                         need_free: bool = False) -> tuple[int, int]:
+        """The closest walkable (or, with need_free, unoccupied) tile to (x, y), searching outward in a
+        fixed order (mirrored for `team`)."""
         x, y = min(max(x, 0), self.width - 1), min(max(y, 0), self.height - 1)
         sx, sy = self.flips(team) if team is not None else (1, 1)
         seen, queue = {(x, y)}, deque([(x, y)])
         while queue:
             here = queue.popleft()
-            if self.walkable(*here):
+            if self.free(*here, ignore) if need_free else self.walkable(*here):
                 return here
             hx, hy = here
             for nxt in ((hx + sx, hy), (hx - sx, hy), (hx, hy + sy), (hx, hy - sy)):
@@ -210,18 +241,32 @@ class World:
     # ------------------------------------------------------------ economy
     def take(self, thing: Thing, n: int) -> int:
         """Remove up to n resource from a map feature; returns how much was taken."""
+        if thing.kind in data.ENDLESS:
+            return n
         n = min(n, thing.amount)
         thing.amount -= n
         if thing.kind in data.TREES:
             thing.state = "full" if thing.amount == thing.max_amount else ("half" if thing.amount else "stump")
             if thing.amount == 0:
                 thing.regrow_at = self.tick + data.TREE_REGROW_TICKS
-        elif thing.amount == 0:  # compost heaps and rocks are used up for good
+        elif thing.amount == 0 and thing.kind != "watering_can":  # compost heaps and rocks are used up for good
             self.things.remove(thing)
             self.blocked -= {(thing.x + i, thing.y + j) for i in range(thing.w) for j in range(thing.h)}
         else:
-            thing.state = "full" if thing.amount * 3 > thing.max_amount * 2 else ("half" if thing.amount * 3 > thing.max_amount else "low")
+            self._set_level(thing)
         return n
+
+    def pour(self, can: Thing, n: int) -> int:
+        """Pour up to n water into a Watering Can; returns how much fit."""
+        n = min(n, can.max_amount - can.amount)
+        can.amount += n
+        self._set_level(can)
+        return n
+
+    @staticmethod
+    def _set_level(thing: Thing) -> None:
+        third = thing.amount * 3
+        thing.state = "full" if third > thing.max_amount * 2 else ("half" if third > thing.max_amount else "low")
 
     def deposit(self, team: Team, kind: str, amount: int) -> int:
         """Add a delivery to the team's stock, boosted 10% (compounding) per grown Root Cellar."""
@@ -231,6 +276,171 @@ class World:
         team.stock[kind] += amount
         return amount
 
+    # ------------------------------------------------------------ building
+    def find_site(self, team: Team, kind: str, anchor: tuple[int, int]) -> tuple[int, int] | None:
+        """The first good top-left tile for a new `kind` near `anchor`, searching outward in the team's
+        mirrored order (so mirrored teams build in mirrored spots)."""
+        size = BUILDINGS[kind].footprint
+        sx, sy = self.flips(team)
+        ax, ay = self.local(team, *anchor)
+        for r in range(1, data.BUILD_SITE_RANGE + 1):
+            ring = [(dx, -r) for dx in range(-r, r + 1)] + [(r, dy) for dy in range(-r + 1, r + 1)]
+            ring += [(dx, r) for dx in range(r - 1, -r - 1, -1)] + [(-r, dy) for dy in range(r - 1, -r, -1)]
+            for dx, dy in ring:
+                lx, ly = ax + dx, ay + dy
+                x = lx if sx > 0 else self.width - lx - size
+                y = ly if sy > 0 else self.height - ly - size
+                if self._site_ok(team, kind, x, y, size):
+                    return x, y
+        return None
+
+    def _site_ok(self, team: Team, kind: str, x: int, y: int, size: int) -> bool:
+        reserved = set(self.channels) | {self.inlet_tile(b) for b in self.buildings if b.kind in data.SPROUTS}
+        tiles = [(x + i, y + j) for i in range(size) for j in range(size)]
+        for tx, ty in tiles:
+            if not self.walkable(tx, ty) or self.tiles[ty][tx] not in (mapgen.GRASS, mapgen.FIELD) or (tx, ty) in reserved \
+                    or self.occupant((tx, ty)) is not None:
+                return False
+        probe = Building(0, team.id, kind, x, y, size, size)
+        if any(not self.walkable(*t) for t in self.ring(probe)):  # keep a walkway all round
+            return False
+        inlet = self.inlet_tile(probe)
+        return inlet is None or (self.walkable(*inlet) and inlet not in reserved)
+
+    def fertility(self, x: int, y: int, w: int, h: int) -> int:
+        """How much faster (percent) a building with this footprint would grow and sprout: the full
+        FERTILE_BONUS on all-field ground, scaled down by the share of its tiles that are field."""
+        fields = sum(1 for i in range(w) for j in range(h) if self.tiles[y + j][x + i] == mapgen.FIELD)
+        return data.FERTILE_BONUS * fields // (w * h)
+
+    def place_building(self, team: Team, kind: str, x: int, y: int) -> Building:
+        size = BUILDINGS[kind].footprint
+        b = Building(self._new_id(), team.id, kind, x, y, size, size, state="planted",
+                     work=data.BUILD_WORK[kind] * data.PACE, fertile=self.fertility(x, y, size, size))
+        self.buildings.append(b)
+        self.blocked |= {(x + i, y + j) for i in range(size) for j in range(size)}
+        return b
+
+    @staticmethod
+    def tend(b: Building) -> None:
+        """One Spud-tick of tending (faster on fertile ground): Planted -> Sprout at half way -> Grown."""
+        b.progress = min(b.work, b.progress + data.PACE * (100 + b.fertile) // 100)
+        b.state = "grown" if b.progress >= b.work else ("sprout" if b.progress * 2 >= b.work else "planted")
+
+    # ------------------------------------------------------------ irrigation
+    def inlet_tile(self, b: Building) -> tuple[int, int] | None:
+        """Where a channel must end to water `b`: in front of its corner facing the middle of the map."""
+        if b.kind not in data.SPROUTS:
+            return None
+        sx, sy = self.flips(self.teams[b.team])
+        return (b.x if sx > 0 else b.x + b.w - 1), (b.y + b.h if sy > 0 else b.y - 1)
+
+    def outlet_tile(self, can: Thing) -> tuple[int, int]:
+        """Where a Watering Can pours: in front of its spout, on the side facing the middle of the map."""
+        sx, sy = self.flips_at(can)
+        return (can.x + can.w - 1 if sx > 0 else can.x), (can.y + can.h if sy > 0 else can.y - 1)
+
+    def plan_channel(self, team: Team, b: Building) -> bool:
+        """Plan an unbroken channel from the nearest Watering Can to b's inlet (dug later by Spuds)."""
+        inlet = self.inlet_tile(b)
+        if inlet is None or not self.walkable(*inlet):
+            return False
+        cans = [t for t in self.things if t.kind == "watering_can" and self.walkable(*self.outlet_tile(t))]
+        cans.sort(key=lambda c: (pathfind._octile(self.outlet_tile(c), inlet), self.local_corner(team, c)))
+        reserved = {self.inlet_tile(o) for o in self.buildings if o.kind in data.SPROUTS and o is not b}
+        ok = lambda x, y: self.walkable(x, y) and (x, y) not in reserved
+        for can in cans:
+            route = pathfind.find_path(self.outlet_tile(can), inlet, ok, self.steps_for(team, ORTHOGONAL))
+            if route is not None:
+                for tile in route:
+                    if tile not in self.channels:
+                        self.channels[tile] = Channel(tile[0], tile[1], team.id, self._channel_order)
+                        self._channel_order += 1
+                b.can = can.id
+                return True
+        return False
+
+    def dig(self, channel: Channel) -> None:
+        channel.progress += 1
+        if channel.progress >= data.CHANNEL_WORK:
+            channel.dug = True
+
+    def _reach(self, start: tuple[int, int], team: Team | None = None) -> dict:
+        """Dug channel tiles connected to `start`, with their distance along the channel."""
+        if start not in self.channels or not self.channels[start].dug:
+            return {}
+        sx, sy = self.flips(team) if team is not None else (1, 1)
+        dist, queue = {start: 0}, deque([start])
+        while queue:
+            x, y = queue.popleft()
+            for nxt in ((x + sx, y), (x - sx, y), (x, y + sy), (x, y - sy)):
+                ch = self.channels.get(nxt)
+                if ch is not None and ch.dug and nxt not in dist:
+                    dist[nxt] = dist[(x, y)] + 1
+                    queue.append(nxt)
+        return dist
+
+    def connected_can(self, b: Building) -> Thing | None:
+        """The Watering Can whose water reaches b's inlet through dug channels (nearest along the channel)."""
+        inlet = self.inlet_tile(b)
+        if inlet is None:
+            return None
+        team = self.teams[b.team]
+        reach = self._reach(inlet, team)
+        cans = [(reach[self.outlet_tile(c)], self.local_corner(team, c), c.id, c) for c in self.things
+                if c.kind == "watering_can" and self.outlet_tile(c) in reach]
+        return min(cans)[3] if cans else None
+
+    def wet_channels(self) -> set:
+        """Dug channel tiles connected to a Watering Can that still holds water (for drawing)."""
+        wet = set()
+        for c in self.things:
+            if c.kind == "watering_can" and c.amount > 0:
+                wet |= set(self._reach(self.outlet_tile(c)))
+        return wet
+
+    # ------------------------------------------------------------ sprouting
+    def start_sprout(self, team: Team, b: Building, kind: str) -> bool:
+        cost = data.UNIT_COST[kind]
+        if (b.state != "grown" or b.sprout_kind or data.SPROUTS.get(b.kind) != kind
+                or team.stock["compost"] < cost["compost"] or self.connected_can(b) is None):
+            return False
+        team.stock["compost"] -= cost["compost"]
+        b.sprout_kind, b.sprout_left, b.water_owed, b.state = kind, data.SPROUT_TICKS[kind] * data.PACE, cost["water"], "sprouting"
+        return True
+
+    def _grow_sprouts(self) -> None:
+        for b in self.buildings:
+            if not b.sprout_kind:
+                continue
+            pace = data.PACE * (100 + b.fertile) // 100
+            ticks_left = -(-b.sprout_left // pace)
+            draw = -(-b.water_owed // ticks_left)  # spread the water evenly over the sprouting time
+            can = self.connected_can(b)
+            if draw and (can is None or can.amount < draw):
+                continue  # no water: sprouting pauses
+            if draw:
+                can.amount -= draw
+                self._set_level(can)
+                b.water_owed -= draw
+            b.sprout_left = max(0, b.sprout_left - pace)
+            if b.sprout_left == 0:
+                team = self.teams[b.team]
+                tile = self.nearest_walkable(*self.inlet_tile(b), team, need_free=True)
+                self._spawn(team, b.sprout_kind, *tile)
+                b.sprout_kind, b.state = "", "grown"
+
+    def _update_water_stock(self) -> None:
+        """A team's Water is what its connected Watering Cans hold."""
+        for team in self.teams:
+            cans = {}
+            for b in self.buildings:
+                if b.team == team.id:
+                    can = self.connected_can(b)
+                    if can is not None:
+                        cans[can.id] = can.amount
+            team.stock["water"] = sum(cans.values())
+
     # ------------------------------------------------------------ update
     def step(self) -> None:
         for thing in self.things:
@@ -238,14 +448,16 @@ class World:
                 thing.amount, thing.state, thing.regrow_at = thing.max_amount, "full", -1
         for team in self.teams:
             bt.run(self.trees[team.tree], bt.Context(self, team, team, "team"))
-        for unit in self.units:
+        for unit in list(self.units):
             unit.prev_x, unit.prev_y = unit.x, unit.y
             unit.move_requested = False
             bt.run(self.trees[unit.tree], bt.Context(self, unit, self.team_of(unit), "unit"))
             if not unit.move_requested:
                 unit.path.clear()
+        self._grow_sprouts()
         for unit in self.units:
             self._move(unit)
+        self._update_water_stock()
         self.tick += 1
 
     def _move(self, unit: Unit) -> None:
@@ -253,6 +465,10 @@ class World:
             unit.reserved = None
             return
         nxt = tuple(unit.path[0])
+        if nxt != self.tile_of(unit) and not self.walkable(*nxt):  # something was planted in the way: re-plan
+            unit.path.clear()
+            unit.reserved = None
+            return
         if nxt != self.tile_of(unit) and unit.reserved != list(nxt):
             if self.occupant(nxt, unit) is not None:  # someone's there: wait, and re-plan if it lasts
                 unit.wait_ticks += 1
@@ -293,6 +509,7 @@ class World:
             "teams": [plain(t, ("trace",)) for t in self.teams],
             "buildings": [plain(b) for b in self.buildings],
             "things": [plain(t) for t in self.things],
+            "channels": [plain(c) for c in sorted(self.channels.values(), key=lambda c: c.order)],
             "units": [plain(u, ("trace", "move_requested")) for u in self.units],
         }
 

@@ -8,7 +8,7 @@ from pathlib import Path
 import pygame
 
 from lettuce_conquer import fieldart
-from lettuce_conquer.buildings import BUILDINGS, FRAMES
+from lettuce_conquer.buildings import BUILDINGS, FRAMES, INLET_FRAME
 from lettuce_conquer.terrain import DECAL_FRAME, GROUND_TILES, LAKE_FOOTPRINT, OBJECT_FRAME
 
 UNIT_DIR = Path(__file__).parent / "assets" / "units"
@@ -65,20 +65,43 @@ def blit_unit(dest: pygame.Surface, unit: str, state: str, team: str,
     return dest.blit(surf, top_left)
 
 
-def building_surface(building: str, state: str, team: str, scale: float) -> pygame.Surface:
-    """The building rasterized at `scale` (1.0 = 120 px per tile, the same scale as units).
-    Neutral resources have no team colors, so `team` changes nothing for them."""
+def building_surface(building: str, state: str, team: str, scale: float, flip: bool = False) -> pygame.Surface:
+    """The building rasterized at `scale` (1.0 = 120 px per tile, the same scale as units), mirrored
+    left-right with `flip`. Neutral resources have no team colors, so `team` changes nothing for them."""
     _, _, fw, fh = FRAMES[BUILDINGS[building].footprint]
-    w, h = max(1, round(fw * scale)), max(1, round(fh * scale))
-    return _rasterize(building_path(building, state), team, w, h)
+    return _sized(building_path(building, state), team, max(1, round(fw * scale)), max(1, round(fh * scale)), flip)
+
+
+@lru_cache(maxsize=512)
+def _sized(path: Path, team: str, width: int, height: int, flip: bool) -> pygame.Surface:
+    surf = _rasterize(path, team, width, height)
+    return pygame.transform.flip(surf, True, False) if flip else surf
 
 
 def blit_building(dest: pygame.Surface, building: str, state: str, team: str,
-                  ground: tuple[float, float], scale: float) -> pygame.Rect:
-    """Draw the building so its ground point lands on `ground`. Returns the area drawn."""
-    fx, fy, _, _ = FRAMES[BUILDINGS[building].footprint]
-    surf = building_surface(building, state, team, scale)
-    return dest.blit(surf, (round(ground[0] + fx * scale), round(ground[1] + fy * scale)))
+                  ground: tuple[float, float], scale: float, flip: bool = False) -> pygame.Rect:
+    """Draw the building so its ground point lands on `ground` (mirrored left-right with `flip`).
+    Returns the area drawn."""
+    fx, fy, fw, _ = FRAMES[BUILDINGS[building].footprint]
+    surf = building_surface(building, state, team, scale, flip)
+    left = -(fx + fw) if flip else fx
+    return dest.blit(surf, (round(ground[0] + left * scale), round(ground[1] + fy * scale)))
+
+
+def blit_inlet(dest: pygame.Surface, stem: str, anchor: tuple[float, float], scale: float,
+               flip: bool = False) -> pygame.Rect:
+    """Draw an irrigation inlet overlay (inlet_gate or inlet_sign) with its anchor on `anchor`."""
+    fx, fy, fw, fh = INLET_FRAME
+    surf = _sized(BUILDING_DIR / f"{stem}.svg", "blue", max(1, round(fw * scale)), max(1, round(fh * scale)), flip)
+    left = -(fx + fw) if flip else fx
+    return dest.blit(surf, (round(anchor[0] + left * scale), round(anchor[1] + fy * scale)))
+
+
+@lru_cache(maxsize=256)
+def channel_surface(piece: str, state: str, turns: int, scale: float) -> pygame.Surface:
+    """A channel piece turned `turns` quarter turns clockwise, at `scale` (a tile is 120 * scale)."""
+    surf = terrain_surface(f"channel_{piece}_{state}", scale)
+    return pygame.transform.rotate(surf, -90 * turns) if turns else surf
 
 
 def terrain_surface(stem: str, scale: float) -> pygame.Surface:

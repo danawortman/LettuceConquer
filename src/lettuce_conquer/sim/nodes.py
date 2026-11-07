@@ -174,7 +174,7 @@ def is_carrying(ctx):
     return SUCCESS if ctx.agent.carry > 0 else FAILURE
 
 
-@node("action", "unit", "Find the nearest map feature holding `resource` (compost, lumber or stone; or, if "
+@node("action", "unit", "Find the nearest map feature holding `resource` (compost, lumber, stone or water; or, if "
       "`resource` is empty, the resource named in blackboard `resource_key`) and store its id in `key`.",
       resource=Arg("str", ""), resource_key=Arg("str", "job"), key=Arg("str", "target"))
 def find_nearest_resource(ctx, resource, resource_key, key):
@@ -183,7 +183,7 @@ def find_nearest_resource(ctx, resource, resource_key, key):
     here = world.tile_of(ctx.agent)
     best = None
     for t in world.things:
-        if data.YIELDS.get(t.kind, ("",))[0] == wanted and t.amount > 0:
+        if data.YIELDS.get(t.kind, ("",))[0] == wanted and (t.amount > 0 or t.kind in data.ENDLESS):
             rank = (_distance_to(here, t), world.local_corner(ctx.team, t))
             if best is None or rank < best[0]:
                 best = (rank, t.id)
@@ -199,7 +199,7 @@ def find_nearest_resource(ctx, resource, resource_key, key):
 def harvest(ctx, key):
     unit, world = ctx.agent, ctx.world
     o = world.entity(ctx.bb.get(key))
-    if o is None or o.amount == 0:  # used up (or a stump): fine if we got something
+    if o is None or (o.amount == 0 and o.kind not in data.ENDLESS):  # used up (or a stump): fine if we got something
         return SUCCESS if unit.carry else FAILURE
     kind = data.YIELDS.get(o.kind, ("",))[0]
     if not kind or not _beside(ctx, o) or (unit.carry and unit.carry_kind != kind):
@@ -233,13 +233,14 @@ def find_dropoff(ctx, key):
     return SUCCESS
 
 
-@node("action", "unit", "Hand the load to the team while standing beside the drop-off whose id is in `key`.",
+@node("action", "unit", "Hand the load to the team while standing beside the drop-off whose id is in `key`. "
+      "Water can't be delivered: it goes into a Watering Can (see pour).",
       key=Arg("str", "dropoff"))
 def deposit(ctx, key):
     unit, world = ctx.agent, ctx.world
     b = world.entity(ctx.bb.get(key))
     if (b is None or getattr(b, "team", None) != unit.team or b.kind not in data.DROPOFFS
-            or not _beside(ctx, b) or unit.carry == 0):
+            or not _beside(ctx, b) or unit.carry == 0 or unit.carry_kind == "water"):
         return FAILURE
     world.deposit(ctx.team, unit.carry_kind, unit.carry)
     unit.carry, unit.carry_kind = 0, ""
@@ -248,9 +249,13 @@ def deposit(ctx, key):
 
 # ---------------------------------------------------------------- team planners
 @node("action", "team", "Store a rally tile in `key`: 'home' is in front of the team's Greenhouse; "
-      "'center' is the middle of the map, on this team's side.", key=Arg("str", "rally"), mode=Arg("str", "center"))
+      "'center' is the middle of the map, on this team's side; 'toggle' switches between the two each time.",
+      key=Arg("str", "rally"), mode=Arg("str", "center"))
 def choose_rally(ctx, key, mode):
     world, team = ctx.world, ctx.agent
+    if mode == "toggle":
+        mode = "home" if ctx.bb.get(key + "_mode") == "center" else "center"
+        ctx.bb[key + "_mode"] = mode
     if mode == "home":
         spot = tuple(team.spawn)
     elif mode == "center":
@@ -265,13 +270,216 @@ def choose_rally(ctx, key, mode):
 
 
 @node("action", "team", "Give the team's Spuds jobs, in id order: the first `compost` gather Compost, the next "
-      "`lumber` Lumber, the next `stone` Stone; any extra Spuds get the last job. Sets each Spud's `job`.",
-      compost=Arg("int", 1), lumber=Arg("int", 1), stone=Arg("int", 1))
-def assign_spud_jobs(ctx, compost, lumber, stone):
-    jobs = ["compost"] * compost + ["lumber"] * lumber + ["stone"] * stone
+      "`lumber` Lumber, the next `stone` Stone, the next `water` fetch Water for the Watering Cans; any extra "
+      "Spuds go round the list again. Sets each Spud's `job`.",
+      compost=Arg("int", 1), lumber=Arg("int", 1), stone=Arg("int", 1), water=Arg("int", 0))
+def assign_spud_jobs(ctx, compost, lumber, stone, water):
+    jobs = ["compost"] * compost + ["lumber"] * lumber + ["stone"] * stone + ["water"] * water
     if not jobs:
         return FAILURE
     spuds = [u for u in ctx.world.units if u.team == ctx.agent.id and u.kind == "spud"]
     for i, spud in enumerate(spuds):
-        spud.bb["job"] = jobs[min(i, len(jobs) - 1)]
+        spud.bb["job"] = jobs[i % len(jobs)]
     return SUCCESS
+
+
+# ---------------------------------------------------------------- general conditions
+@node("condition", "any", "True when blackboard `key` holds the text `value`.", key=Arg("str"), value=Arg("str"))
+def key_equals(ctx, key, value):
+    return SUCCESS if ctx.bb.get(key) == value else FAILURE
+
+
+@node("condition", "any", "True when the team has at least `amount` of `resource` in stock.",
+      resource=Arg("str"), amount=Arg("int", 1))
+def stock_at_least(ctx, resource, amount):
+    return SUCCESS if ctx.team.stock.get(resource, 0) >= amount else FAILURE
+
+
+@node("condition", "any", "True when the team has fewer than `count` buildings of `kind` (any state, sites too).",
+      kind=Arg("str"), count=Arg("int", 1))
+def building_count_below(ctx, kind, count):
+    have = sum(1 for b in ctx.world.buildings if b.team == ctx.team.id and b.kind == kind)
+    return SUCCESS if have < count else FAILURE
+
+
+@node("condition", "any", "True when the team has fewer than `count` units of `kind` (counting ones still sprouting).",
+      kind=Arg("str"), count=Arg("int", 1))
+def unit_count_below(ctx, kind, count):
+    world, team = ctx.world, ctx.team
+    have = sum(1 for u in world.units if u.team == team.id and u.kind == kind)
+    have += sum(1 for b in world.buildings if b.team == team.id and b.sprout_kind == kind)
+    return SUCCESS if have < count else FAILURE
+
+
+@node("condition", "any", "True when the team has a `kind` building at least `percent` fertile (planted on "
+      "tilled field tiles, it grows and sprouts that much faster).", kind=Arg("str"), percent=Arg("int", 1))
+def building_fertile(ctx, kind, percent):
+    return SUCCESS if any(b.team == ctx.team.id and b.kind == kind and b.fertile >= percent
+                          for b in ctx.world.buildings) else FAILURE
+
+
+# ---------------------------------------------------------------- units: building and irrigation
+@node("condition", "unit", "True when the unit carries some `resource`.", resource=Arg("str", "water"))
+def carrying(ctx, resource):
+    return SUCCESS if ctx.agent.carry > 0 and ctx.agent.carry_kind == resource else FAILURE
+
+
+@node("action", "unit", "Find the team's nearest building that still needs tending (Planted or Sprout); "
+      "store its id in `key`.", key=Arg("str", "site"))
+def find_construction(ctx, key):
+    world = ctx.world
+    here = world.tile_of(ctx.agent)
+    sites = [(_distance_to(here, b), world.local_corner(ctx.team, b), b.id) for b in world.buildings
+             if b.team == ctx.agent.team and b.state in ("planted", "sprout")]
+    if not sites:
+        return FAILURE
+    ctx.bb[key] = min(sites)[2]
+    return SUCCESS
+
+
+@node("action", "unit", "Tend the building whose id is in `key` while standing beside it, one Spud-tick each tick "
+      "(Spuds tending together add up). Succeeds once it has grown; fails if not beside it.",
+      key=Arg("str", "site"))
+def tend(ctx, key):
+    world = ctx.world
+    b = world.entity(ctx.bb.get(key))
+    if b is None or getattr(b, "team", None) != ctx.agent.team or ctx.agent.kind != "spud":
+        return FAILURE
+    if b.state not in ("planted", "sprout"):
+        return SUCCESS
+    if not _beside(ctx, b):
+        return FAILURE
+    world.tend(b)
+    return SUCCESS if b.state == "grown" else RUNNING
+
+
+@node("action", "unit", "Find the next undug tile of the team's planned irrigation channels (dug from the "
+      "Watering Can outward) that no teammate is already on or headed for; store the tile in `key`.",
+      key=Arg("str", "ditch"))
+def find_channel_work(ctx, key):
+    world, unit = ctx.world, ctx.agent
+    taken = set()
+    for u in world.units:
+        if u is not unit and u.team == unit.team:
+            t = _tile(u.bb.get(key))
+            if t is not None:
+                taken.add(t)
+    todo = sorted((c.order, (c.x, c.y)) for c in world.channels.values() if c.team == unit.team and not c.dug)
+    for _, tile in todo:
+        if tile not in taken and world.occupant(tile, unit) is None:
+            ctx.bb[key] = list(tile)
+            return SUCCESS
+    ctx.bb.pop(key, None)
+    return FAILURE
+
+
+@node("action", "unit", "Dig the channel tile stored in `key` while standing on it. The first dig pays the "
+      "tile's Lumber; fails if the team can't pay. Succeeds once the tile is dug.", key=Arg("str", "ditch"))
+def dig(ctx, key):
+    world, unit = ctx.world, ctx.agent
+    tile = _tile(ctx.bb.get(key))
+    channel = world.channels.get(tile) if tile is not None else None
+    if channel is None or channel.team != unit.team or unit.kind != "spud":
+        ctx.bb.pop(key, None)
+        return FAILURE
+    if channel.dug:
+        ctx.bb.pop(key, None)
+        return SUCCESS
+    if world.tile_of(unit) != tile or not world.at_center(unit):
+        return FAILURE
+    if not channel.paid:
+        if ctx.team.stock["lumber"] < data.CHANNEL_COST:
+            ctx.bb.pop(key, None)
+            return FAILURE
+        ctx.team.stock["lumber"] -= data.CHANNEL_COST
+        channel.paid = True
+    world.dig(channel)
+    if channel.dug:
+        ctx.bb.pop(key, None)
+        return SUCCESS
+    return RUNNING
+
+
+@node("action", "unit", "Find the nearest Watering Can that waters one of the team's buildings and isn't full; "
+      "store its id in `key`. Fails if no can needs water.", key=Arg("str", "can"))
+def find_can(ctx, key):
+    world = ctx.world
+    here = world.tile_of(ctx.agent)
+    cans = {}
+    for b in world.buildings:
+        if b.team == ctx.agent.team:
+            can = world.connected_can(b)
+            if can is not None and can.amount < can.max_amount:
+                cans[can.id] = can
+    if not cans:
+        return FAILURE
+    ctx.bb[key] = min((_distance_to(here, c), world.local_corner(ctx.team, c), c.id) for c in cans.values())[2]
+    return SUCCESS
+
+
+@node("action", "unit", "Pour the Water the unit carries into the Watering Can whose id is in `key` while standing "
+      "beside it. Whatever doesn't fit spills. Fails if not beside a can or carrying no water.", key=Arg("str", "can"))
+def pour(ctx, key):
+    world, unit = ctx.world, ctx.agent
+    can = world.entity(ctx.bb.get(key))
+    if (can is None or getattr(can, "kind", "") != "watering_can" or unit.carry_kind != "water"
+            or unit.carry == 0 or not _beside(ctx, can)):
+        return FAILURE
+    world.pour(can, unit.carry)
+    unit.carry, unit.carry_kind = 0, ""
+    return SUCCESS
+
+
+# ---------------------------------------------------------------- team planners: building and sprouting
+def _anchor(world, team, near):
+    if near == "home":
+        return tuple(team.spawn)
+    spots = [(_distance_to(tuple(team.spawn), t), world.local_corner(team, t), t.id, t) for t in world.things
+             if data.YIELDS.get(t.kind, ("",))[0] == near]
+    if not spots:
+        return None
+    t = min(spots, key=lambda s: s[:3])[3]
+    return t.x, t.y
+
+
+@node("action", "team", "Order a new `kind` building: find a free spot near `near` ('home', or a resource such as "
+      "'compost', 'lumber', 'stone', 'water'), pay its Lumber and Stone, and plant it for Spuds to tend. "
+      "Fails if the team can't pay or there's no room.", kind=Arg("str"), near=Arg("str", "home"))
+def order_building(ctx, kind, near):
+    world, team = ctx.world, ctx.agent
+    cost = data.BUILD_COST.get(kind)
+    if cost is None or any(team.stock[r] < n for r, n in cost.items()):
+        return FAILURE
+    anchor = _anchor(world, team, near)
+    site = world.find_site(team, kind, anchor) if anchor is not None else None
+    if site is None:
+        return FAILURE
+    for r, n in cost.items():
+        team.stock[r] -= n
+    world.place_building(team, kind, *site)
+    return SUCCESS
+
+
+@node("action", "team", "Plan irrigation channels from the nearest Watering Can to every `kind` building of the "
+      "team that has none yet (Spuds dig them). Succeeds when every such building has a channel planned.",
+      kind=Arg("str", "greenhouse"))
+def order_channel(ctx, kind):
+    world, team = ctx.world, ctx.agent
+    ok = True
+    for b in world.buildings:
+        if b.team == team.id and b.kind == kind and not b.can:
+            ok = world.plan_channel(team, b) and ok
+    return SUCCESS if ok else FAILURE
+
+
+@node("action", "team", "Start sprouting a `kind` unit in an idle, grown, watered building that makes it: pays the "
+      "Compost now; Water is drawn from the connected can while it grows. Fails if none can.",
+      kind=Arg("str", "spud"))
+def sprout(ctx, kind):
+    world, team = ctx.world, ctx.agent
+    homes = sorted((world.local_corner(team, b), b.id, b) for b in world.buildings
+                   if b.team == team.id and data.SPROUTS.get(b.kind) == kind)
+    for _, _, b in homes:
+        if world.start_sprout(team, b, kind):
+            return SUCCESS
+    return FAILURE

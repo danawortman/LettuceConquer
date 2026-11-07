@@ -1,0 +1,82 @@
+{
+  "name": "Spud at work",
+  "scope": "unit",
+  "description": "Pour any water I carry into a can; deliver a full load; tend a building that is growing; dig the next channel tile; fetch water if that's my job and a can needs it; gather for my job; deliver whatever I carry; otherwise wait.",
+  "root": {
+    "type": "selector",
+    "children": [
+      {
+        "type": "sequence",
+        "label": "pour my water into a can",
+        "children": [
+          {"type": "condition", "name": "carrying", "args": {"resource": "water"}},
+          {"type": "action", "name": "find_can", "args": {"key": "can"}},
+          {"type": "action", "name": "move_next_to", "args": {"key": "can"}},
+          {"type": "action", "name": "pour", "args": {"key": "can"}}
+        ]
+      },
+      {
+        "type": "sequence",
+        "label": "deliver a full load",
+        "children": [
+          {"type": "condition", "name": "is_full"},
+          {"type": "action", "name": "find_dropoff", "args": {"key": "dropoff"}},
+          {"type": "action", "name": "move_next_to", "args": {"key": "dropoff"}},
+          {"type": "action", "name": "deposit", "args": {"key": "dropoff"}}
+        ]
+      },
+      {
+        "type": "sequence",
+        "label": "tend a growing building",
+        "children": [
+          {"type": "action", "name": "find_construction", "args": {"key": "site"}},
+          {"type": "action", "name": "move_next_to", "args": {"key": "site"}},
+          {"type": "action", "name": "tend", "args": {"key": "site"}}
+        ]
+      },
+      {
+        "type": "sequence",
+        "label": "dig a channel",
+        "children": [
+          {"type": "condition", "name": "stock_at_least", "args": {"resource": "lumber", "amount": 5}},
+          {"type": "action", "name": "find_channel_work", "args": {"key": "ditch"}},
+          {"type": "action", "name": "move_to", "args": {"key": "ditch"}},
+          {"type": "action", "name": "dig", "args": {"key": "ditch"}}
+        ]
+      },
+      {
+        "type": "sequence",
+        "label": "fetch water for a can",
+        "children": [
+          {"type": "condition", "name": "key_equals", "args": {"key": "job", "value": "water"}},
+          {"type": "action", "name": "find_can", "args": {"key": "can"}},
+          {"type": "action", "name": "find_nearest_resource", "args": {"resource": "water", "key": "target"}},
+          {"type": "action", "name": "move_next_to", "args": {"key": "target"}},
+          {"type": "action", "name": "harvest", "args": {"key": "target"}}
+        ]
+      },
+      {
+        "type": "sequence",
+        "label": "gather for my job",
+        "children": [
+          {"type": "condition", "name": "has_key", "args": {"key": "job"}},
+          {"type": "inverter", "child": {"type": "condition", "name": "key_equals", "args": {"key": "job", "value": "water"}}},
+          {"type": "action", "name": "find_nearest_resource", "args": {"resource_key": "job", "key": "target"}},
+          {"type": "action", "name": "move_next_to", "args": {"key": "target"}},
+          {"type": "action", "name": "harvest", "args": {"key": "target"}}
+        ]
+      },
+      {
+        "type": "sequence",
+        "label": "deliver what I have",
+        "children": [
+          {"type": "condition", "name": "is_carrying"},
+          {"type": "action", "name": "find_dropoff", "args": {"key": "dropoff"}},
+          {"type": "action", "name": "move_next_to", "args": {"key": "dropoff"}},
+          {"type": "action", "name": "deposit", "args": {"key": "dropoff"}}
+        ]
+      },
+      {"type": "action", "name": "wait", "args": {"ticks": 10}}
+    ]
+  }
+}

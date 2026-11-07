@@ -1,0 +1,47 @@
+{
+  "name": "Grow an army",
+  "scope": "team",
+  "description": "Hand out Spud jobs; plant one of each fighter building and plan channels to everything that sprouts; sprout Spuds and fighters up to a few of each; send the fighters to the middle and back now and then.",
+  "root": {
+    "type": "sequence",
+    "children": [
+      {"type": "action", "name": "assign_spud_jobs", "args": {"compost": 1, "lumber": 1, "stone": 1, "water": 1}},
+      {"type": "succeeder", "child": {"type": "sequence", "label": "plant a Cabbage Patch", "children": [
+        {"type": "condition", "name": "building_count_below", "args": {"kind": "cabbage_patch", "count": 1}},
+        {"type": "action", "name": "order_building", "args": {"kind": "cabbage_patch", "near": "home"}}
+      ]}},
+      {"type": "succeeder", "child": {"type": "sequence", "label": "plant a Pea Trellis", "children": [
+        {"type": "condition", "name": "building_count_below", "args": {"kind": "pea_trellis", "count": 1}},
+        {"type": "action", "name": "order_building", "args": {"kind": "pea_trellis", "near": "home"}}
+      ]}},
+      {"type": "succeeder", "child": {"type": "sequence", "label": "plant a Carrot Bed", "children": [
+        {"type": "condition", "name": "building_count_below", "args": {"kind": "carrot_bed", "count": 1}},
+        {"type": "action", "name": "order_building", "args": {"kind": "carrot_bed", "near": "home"}}
+      ]}},
+      {"type": "succeeder", "child": {"type": "action", "name": "order_channel", "args": {"kind": "greenhouse"}}},
+      {"type": "succeeder", "child": {"type": "action", "name": "order_channel", "args": {"kind": "cabbage_patch"}}},
+      {"type": "succeeder", "child": {"type": "action", "name": "order_channel", "args": {"kind": "pea_trellis"}}},
+      {"type": "succeeder", "child": {"type": "action", "name": "order_channel", "args": {"kind": "carrot_bed"}}},
+      {"type": "succeeder", "child": {"type": "cooldown", "ticks": 20, "child": {"type": "selector", "label": "sprout something", "children": [
+        {"type": "sequence", "children": [
+          {"type": "condition", "name": "unit_count_below", "args": {"kind": "spud", "count": 5}},
+          {"type": "action", "name": "sprout", "args": {"kind": "spud"}}
+        ]},
+        {"type": "sequence", "children": [
+          {"type": "condition", "name": "unit_count_below", "args": {"kind": "cabbage", "count": 3}},
+          {"type": "action", "name": "sprout", "args": {"kind": "cabbage"}}
+        ]},
+        {"type": "sequence", "children": [
+          {"type": "condition", "name": "unit_count_below", "args": {"kind": "pea", "count": 3}},
+          {"type": "action", "name": "sprout", "args": {"kind": "pea"}}
+        ]},
+        {"type": "sequence", "children": [
+          {"type": "condition", "name": "unit_count_below", "args": {"kind": "carrot", "count": 3}},
+          {"type": "action", "name": "sprout", "args": {"kind": "carrot"}}
+        ]}
+      ]}}},
+      {"type": "succeeder", "child": {"type": "cooldown", "ticks": 400, "child":
+        {"type": "action", "name": "choose_rally", "args": {"key": "rally", "mode": "toggle"}}}}
+    ]
+  }
+}

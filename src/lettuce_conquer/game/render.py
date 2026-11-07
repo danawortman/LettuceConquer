@@ -7,9 +7,9 @@ from dataclasses import dataclass
 import pygame
 
 from lettuce_conquer import art, fieldart
-from lettuce_conquer.terrain import DECAL_FRAME
+from lettuce_conquer.terrain import DECAL_FRAME, piece_for
 from lettuce_conquer.sim import bt
-from lettuce_conquer.sim.data import TILE
+from lettuce_conquer.sim.data import CHANNEL_WORK, TILE
 from lettuce_conquer.sim.world import World
 
 INK = (43, 33, 24)
@@ -128,14 +128,20 @@ def draw_world(screen: pygame.Surface, world: World, cam: Camera, alpha: float =
         for cx in range(max(0, ox // span), min(-(-world.width // CHUNK), (ox + sw) // span + 1)):
             screen.blit(ground.chunk(cx, cy, z), (cx * span - ox, cy * span - oy))
 
-    standing = []  # (ground y, ground x, id, draw)
     for thing in world.things:
         if thing.kind == "lake":
             screen.blit(art.terrain_surface("lake", z), (thing.x * ts - ox, thing.y * ts - oy))
-        elif thing.kind in NEUTRAL_BUILDINGS:
+    draw_channels(screen, world, cam)
+
+    standing = []  # (ground y, ground x, id, draw)
+    for thing in world.things:
+        if thing.kind == "lake":
+            continue
+        if thing.kind in NEUTRAL_BUILDINGS:
             gx, gy = (thing.x + thing.w / 2) * TILE, (thing.y + thing.h) * TILE
-            standing.append((gy, gx, thing.id, lambda t=thing, g=(gx, gy): art.blit_building(
-                screen, t.kind, t.state, "blue", cam.to_screen(*g), z)))
+            flip = thing.kind == "watering_can" and world.flips_at(thing)[0] < 0  # spout toward the middle
+            standing.append((gy, gx, thing.id, lambda t=thing, g=(gx, gy), f=flip: art.blit_building(
+                screen, t.kind, t.state, "blue", cam.to_screen(*g), z, f)))
         else:
             dx, dy, size = nudge(world, thing)
             gx, gy = (thing.x + 0.5) * TILE + dx, thing.y * TILE + TREE_GROUND_OFFSET + dy
@@ -144,8 +150,16 @@ def draw_world(screen: pygame.Surface, world: World, cam: Camera, alpha: float =
     for b in world.buildings:
         gx, gy = (b.x + b.w / 2) * TILE, (b.y + b.h) * TILE
         color = world.teams[b.team].color
-        standing.append((gy, gx, b.id, lambda b=b, g=(gx, gy), c=color: art.blit_building(
-            screen, b.kind, b.state, c, cam.to_screen(*g), z)))
+        flip = world.flips(world.teams[b.team])[0] < 0  # mirrored quarters get mirrored art (inlet side)
+        standing.append((gy, gx, b.id, lambda b=b, g=(gx, gy), c=color, f=flip: art.blit_building(
+            screen, b.kind, b.state, c, cam.to_screen(*g), z, f)))
+        inlet = world.inlet_tile(b)
+        if inlet is not None:  # a sluice gate once grown, a water-drop sign before that
+            stem = "inlet_sign" if b.state in ("planted", "sprout") else "inlet_gate"
+            ax = (inlet[0] + 0.5) * TILE
+            ay = (inlet[1] if inlet[1] >= b.y + b.h else inlet[1] + 1) * TILE  # the edge it shares with the building
+            standing.append((ay + 1, ax, b.id, lambda s=stem, a=(ax, ay), f=flip: art.blit_inlet(
+                screen, s, cam.to_screen(*a), z, f)))
     for u in world.units:
         gx, gy = unit_position(u, alpha)
         color = world.teams[u.team].color
@@ -164,6 +178,60 @@ def draw_world(screen: pygame.Surface, world: World, cam: Camera, alpha: float =
         sx, sy = cam.to_screen(gx, gy)
         if -margin < sx < sw + margin and -margin * 0.3 < sy < sh + margin * 1.6:
             draw()
+
+
+CHANNEL_SIDES = {"N": (0, -1), "E": (1, 0), "S": (0, 1), "W": (-1, 0)}
+STAKE = (122, 82, 40)
+
+
+def channel_ends(world: World) -> dict:
+    """Extra sides that dug channel tiles connect to: a building's inlet opens toward the building, and a
+    Watering Can's outlet toward the can."""
+    ends = {}
+    for b in world.buildings:
+        inlet = world.inlet_tile(b)
+        if inlet is not None:
+            ends.setdefault(inlet, set()).add("N" if inlet[1] >= b.y + b.h else "S")
+    for c in world.things:
+        if c.kind == "watering_can":
+            out = world.outlet_tile(c)
+            ends.setdefault(out, set()).add("N" if out[1] >= c.y + c.h else "S")
+    return ends
+
+
+def draw_channels(screen, world: World, cam: Camera) -> None:
+    """Dug channels as joined pieces (wet when a can with water feeds them); planned tiles as stakes and string."""
+    if not world.channels:
+        return
+    z = cam.zoom
+    ts = round(TILE * z)
+    sw, sh = screen.get_size()
+    wet, ends = world.wet_channels(), channel_ends(world)
+    for (x, y), ch in world.channels.items():
+        sx, sy = cam.to_screen(x * TILE, y * TILE)
+        if not (-ts < sx < sw and -ts < sy < sh):
+            continue
+        sx, sy = round(sx), round(sy)
+        if ch.dug:
+            sides = "".join(d for d, (dx, dy) in CHANNEL_SIDES.items()
+                            if (n := world.channels.get((x + dx, y + dy))) is not None and n.dug)
+            sides += "".join(ends.get((x, y), ()))
+            piece, turns = piece_for(sides)
+            screen.blit(art.channel_surface(piece, "wet" if (x, y) in wet else "dry", turns, z), (sx, sy))
+            continue
+        # planned: four stakes with string between them, and a growing heap of dug earth
+        m, r = round(26 * z), max(2, round(6 * z))
+        corners = [(sx + m, sy + m), (sx + ts - m, sy + m), (sx + ts - m, sy + ts - m), (sx + m, sy + ts - m)]
+        pygame.draw.lines(screen, (238, 226, 196), True, corners, max(1, round(3 * z)))
+        if ch.progress:
+            k = min(1.0, ch.progress / CHANNEL_WORK)
+            rect = pygame.Rect(0, 0, round(70 * z * k) + 2, round(40 * z * k) + 2)
+            rect.center = (sx + ts // 2, sy + ts // 2)
+            pygame.draw.ellipse(screen, (107, 74, 43), rect)
+            pygame.draw.ellipse(screen, INK, rect, max(1, round(2 * z)))
+        for c in corners:
+            pygame.draw.circle(screen, STAKE, c, r)
+            pygame.draw.circle(screen, INK, c, r, max(1, round(2 * z)))
 
 
 RESOURCE_COLORS = {"compost": (107, 74, 43), "lumber": (176, 122, 69), "stone": (169, 163, 155), "water": (111, 195, 232)}
@@ -223,51 +291,61 @@ def draw_hud(screen, font, world: World, speed: int, paused: bool) -> None:
     screen.blit(hint, (8, screen.get_height() - 22))
 
 
-def tree_lines(node: dict, path: str = "r", depth: int = 0):
-    """(depth, path, text) for every node, in display order."""
+def _node_text(node: dict) -> str:
     t = node["type"]
     if t in ("condition", "action"):
         args = ", ".join(f"{k}={v}" for k, v in node.get("args", {}).items())
-        text = f"{'?' if t == 'condition' else '!'} {node['name']}({args})"
-    else:
-        extra = f" x{node['times']}" if t == "repeat" and "times" in node else (f" {node['ticks']}t" if t == "cooldown" else "")
-        text = t + extra + (f"  - {node['label']}" if "label" in node else "")
-    yield depth, path, text
-    if "children" in node:
-        for i, child in enumerate(node["children"]):
-            yield from tree_lines(child, f"{path}/{i}", depth + 1)
-    elif "child" in node:
-        yield from tree_lines(node["child"], path + "/0", depth + 1)
+        return f"{'?' if t == 'condition' else '!'} {node['name']}({args})"
+    extra = f" x{node['times']}" if t == "repeat" and "times" in node else (f" {node['ticks']}t" if t == "cooldown" else "")
+    return t + extra + (f"  - {node['label']}" if "label" in node else "")
+
+
+def tree_lines(node: dict, path: str = "r", depth: int = 0, prefix: str = "", outer: tuple = ()):
+    """(depth, paths, text) for every line, in display order. A decorator shares its child's line
+    ("succeeder > sequence"); `paths` lists the line's nodes from the innermost out, so the line can show
+    the innermost status that was reached this tick."""
+    if "child" in node:
+        yield from tree_lines(node["child"], path + "/0", depth, prefix + _node_text(node) + " > ", (path,) + outer)
+        return
+    yield depth, (path,) + outer, prefix + _node_text(node)
+    for i, child in enumerate(node.get("children", ())):
+        yield from tree_lines(child, f"{path}/{i}", depth + 1)
 
 
 def draw_inspector(screen, font, small, world: World, agent) -> None:
-    """A panel showing the agent's tree, each node colored by its status this tick, and its blackboard."""
+    """A panel showing the agent's tree, each node colored by its status this tick, and its blackboard.
+    Lines flow into more columns when they don't fit the screen's height."""
     tree = world.trees[agent.tree]
     is_team = not hasattr(agent, "kind")
     who = f"{agent.color} team planner" if is_team else f"{agent.kind} #{agent.id} ({world.teams[agent.team].color})"
-    lines = list(tree_lines(tree["root"]))
-    width, line_h = 470, 20
     extra = {} if is_team else {"carrying": f"{agent.carry} {agent.carry_kind}" if agent.carry else "nothing"}
-    height = 86 + line_h * (len(lines) + 2 + len(agent.bb) + len(extra))
+    rows = []  # (indent, dot color or None, text, text color)
+    for depth, paths, text in tree_lines(tree["root"]):
+        status = next((agent.trace[p] for p in paths if p in agent.trace), None)
+        color = STATUS_COLORS.get(status, UNVISITED)
+        rows.append((depth, color, text, color if status else UNVISITED))
+    rows.append((0, None, "", INK))
+    rows.append((0, None, "blackboard", INK))
+    rows += [(0, None, f"  {k} = {v}", INK) for k, v in agent.bb.items()]
+    rows += [(0, None, f"{k}: {v}", INK) for k, v in extra.items()]
+
+    top = 44 + 22 * len(world.teams)
+    head, col_w, line_h = 60, 480, 18
+    per_col = max(1, (screen.get_height() - top - 40 - head) // line_h)
+    cols = -(-len(rows) // per_col)
+    per_col = -(-len(rows) // cols)  # balance the columns
+    width, height = col_w * cols, head + line_h * per_col + 10
     panel = pygame.Surface((width, height), pygame.SRCALPHA)
     panel.fill((246, 239, 217, 235))
     pygame.draw.rect(panel, INK, panel.get_rect(), 2)
     panel.blit(font.render(who, True, INK), (12, 10))
     panel.blit(small.render(f"tree: {tree.get('name', agent.tree)}", True, INK), (12, 34))
-    y = 60
-    for depth, path, text in lines:
-        status = agent.trace.get(path)
-        color = STATUS_COLORS.get(status, UNVISITED)
-        pygame.draw.circle(panel, color, (18 + depth * 16, y + 8), 5)
-        panel.blit(small.render(text, True, color if status else UNVISITED), (28 + depth * 16, y))
-        y += line_h
-    y += 8
-    panel.blit(small.render("blackboard", True, INK), (12, y))
-    y += line_h
-    for key, value in agent.bb.items():
-        panel.blit(small.render(f"  {key} = {value}", True, INK), (12, y))
-        y += line_h
-    for key, value in extra.items():
-        panel.blit(small.render(f"{key}: {value}", True, INK), (12, y))
-        y += line_h
-    screen.blit(panel, (screen.get_width() - width - 10, 44 + 22 * len(world.teams)))
+    for i, (depth, dot, text, color) in enumerate(rows):
+        x, y = col_w * (i // per_col) + 12, head + line_h * (i % per_col)
+        if dot is not None:
+            pygame.draw.circle(panel, dot, (x + 6 + depth * 14, y + 8), 5)
+            x += 16 + depth * 14
+        panel.set_clip(pygame.Rect(col_w * (i // per_col), 0, col_w - 6, height))
+        panel.blit(small.render(text, True, color), (x, y))
+        panel.set_clip(None)
+    screen.blit(panel, (max(0, screen.get_width() - width - 10), top))

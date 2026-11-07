@@ -20,9 +20,12 @@ this project in its own virtual environment.
 .venv/Scripts/python -m lettuce_conquer
 ```
 
-Behavior trees drive every army; you watch and inspect. Each demo army has three Spuds (the team
-planner puts one on Compost, one on Lumber, one on Stone) and three fighters that follow the planner's
-rally point. The top bar shows each team's stock. Options: `--seed N` (map), `--teams 2|3|4`,
+Behavior trees drive every army; you watch and inspect. Each demo army starts with three Spuds and
+three fighters. The team planner hands the Spuds jobs, plants a Cabbage Patch, Pea Trellis and Carrot
+Bed, plans irrigation channels to everything that sprouts, and sprouts more Spuds and fighters as
+Compost and Water allow. Spuds gather, tend new buildings until they grow, dig channels and carry
+water to the Watering Cans; fighters follow the planner's rally point. The top bar shows each team's
+stock. Options: `--seed N` (map), `--teams 2|3|4`,
 `--one-worker` (start with one Spud per army, the real rule, instead of the demo army),
 `--ticks N` (fast-forward), `--zoom Z`.
 
@@ -45,9 +48,10 @@ Headless frame: `.venv/Scripts/python -m lettuce_conquer --ticks 200 --screensho
     armies start on identical ground.
   - `pathfind.py`: A* on the tile grid.
   - `world.py`: the world and its update. Each tick stumps regrow, every team's planner tree runs, then
-    every unit's tree, then units move. Units never share a tile: a unit reserves the next tile before
+    every unit's tree, then sprouting buildings draw water and finish units, then units move. Units never share a tile: a unit reserves the next tile before
     stepping in, waits if it's taken, and re-plans around other units if the wait lasts.
-  - `data.py`: tunable numbers (speeds, carry size, resource amounts, regrowth, the Root Cellar bonus).
+  - `data.py`: tunable numbers (speeds, carry size, resource amounts, regrowth, the Root Cellar bonus,
+    building and unit costs, tending and sprouting times, channel cost).
   - `bt.py`, `nodes.py`, `trees.py`: behavior trees (below).
 - `lettuce_conquer/game/`: the pygame window that draws the world and the tree inspector.
 
@@ -87,8 +91,13 @@ Node library, by area:
 |---|---|
 | General | `has_key`, `set_key`, `clear_key`, `wait`, `succeed`, `fail` |
 | Moving | `move_to`, `move_next_to`, `pick_wander_spot`, `at_tile`, `team_has_key`, `copy_team_key` |
+| Conditions | `key_equals`, `stock_at_least`, `building_count_below`, `unit_count_below`, `building_fertile`, `carrying` |
 | Gathering | `find_nearest_resource`, `harvest`, `is_full`, `is_carrying`, `find_dropoff`, `deposit` |
-| Team planner | `choose_rally`, `assign_spud_jobs` |
+| Building and water | `find_construction`, `tend`, `find_channel_work`, `dig`, `find_can`, `pour` |
+| Team planner | `choose_rally`, `assign_spud_jobs`, `order_building`, `order_channel`, `sprout` |
+
+The default trees are `unit_worker` (Spuds), `unit_follow_rally` (fighters) and `planner_grow` (the
+team planner). `unit_gather`, `planner_rally` and `unit_wander` are simpler examples.
 
 ## Economy
 
@@ -97,7 +106,49 @@ Node library, by area:
   gone for good. Trees (50 Lumber) turn into stumps and regrow after a minute.
 - Spuds deliver to their team's nearest grown Greenhouse or Root Cellar. Each grown Root Cellar adds
   10% to every delivery, compounding (one: x1.1, two: x1.21).
-- Water arrives through irrigation channels, not by carrying (see Resources above).
+- Water can't be delivered: a team's Water is what its connected Watering Cans hold (see below).
+
+## Building, irrigation and sprouting
+
+- **Building:** the planner's `order_building` finds a free spot near home (grass or tilled field, with
+  a walkway all round and room for the inlet), pays the Lumber and Stone and plants the building. Spuds tend it:
+  one point of growth per Spud per tick, so more Spuds grow it faster. It turns from Planted to Sprout
+  half way, then to Grown.
+- **Fertile ground:** the tilled fields out past each base are fertile. A building planted on them
+  grows and sprouts up to 50% faster: the full bonus when its whole footprint is field, less when only
+  some of it is (`World.fertility`, `Building.fertile`). Sprouting on fertile ground uses the same Water,
+  just sooner. The demo planner still builds near home; choosing fertile sites is left open.
+- **Irrigation:** `order_channel` plans a channel from the nearest Watering Can's spout to a building's
+  inlet. Spuds dig it tile by tile, from the can outward, paying 5 Lumber per tile. Units walk across
+  channels. Dug channels joined to a can holding water are drawn wet.
+- **Water:** Watering Cans are neutral and hold 500 Water; any team can connect to any can. A Spud
+  whose job is water fills up at a lake (lakes never run dry) and pours it into a connected can that
+  isn't full.
+- **Sprouting:** `sprout` picks an idle, grown building that makes the unit and is watered. It pays the
+  Compost at once and draws the Water from the connected can a little each tick; sprouting pauses while
+  the can is dry. The new unit appears beside the inlet.
+- **Inlets face the middle of the map.** The armies' bases are mirrored, so building and can art is
+  mirrored too, and the sluice gate sits on the side facing the middle (at the back of the building for
+  bases in the bottom half). Every tie is broken in the team's own mirrored view, so mirrored armies
+  make mirrored choices; a test checks every unit, building and channel against its twin.
+
+| Building | Lumber | Stone | Tending |
+|---|---|---|---|
+| Greenhouse | 200 | 100 | 600 |
+| Root Cellar | 80 | 60 | 300 |
+| Cabbage Patch | 60 | 40 | 300 |
+| Pea Trellis | 80 | 20 | 300 |
+| Carrot Bed | 70 | 30 | 300 |
+| Scarecrow Watchtower | 40 | 40 | 150 |
+
+| Unit | Compost | Water | Sprouting (ticks) |
+|---|---|---|---|
+| Spud | 50 | 20 | 100 |
+| Sir Cabbage | 80 | 40 | 150 |
+| Pea Shooter | 60 | 30 | 120 |
+| Carrot Lancer | 70 | 50 | 150 |
+
+All numbers are placeholders in `sim/data.py` (`FERTILE_BONUS` for fertile ground).
 
 ## Run the art test scene
 
@@ -178,9 +229,10 @@ frames.
 Art is drawn at 120 px per grid tile, the same scale as the units. Buildings of one footprint
 share a frame (see `FRAMES` in `buildings.py`) with the building's ground point at `(0, 0)`.
 
-Buildings that sprout units need water. Each has a wooden sluice-gate **inlet** at the front of
-its left-hand tile; an irrigation channel waters the building when it ends on the tile directly in
-front of the inlet (`BuildingType.inlet_tile`).
+Buildings that sprout units need water. Each has a wooden sluice-gate **inlet**, drawn as a
+separate overlay (`inlet_gate`, or `inlet_sign` before the building has grown) on whichever side the
+inlet faces; an irrigation channel waters the building when it ends on the inlet tile
+(`World.inlet_tile`).
 
 ### Terrain
 

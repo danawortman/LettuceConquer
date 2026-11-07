@@ -13,6 +13,12 @@ FRAMES = {1: (-130, -250, 260, 280), 2: (-170, -270, 340, 300), 3: (-250, -380, 
 GROWTH_STATES = ("planted", "sprout", "grown", "wilted")
 RESOURCE_LEVELS = ("full", "half", "low")
 
+# The irrigation inlet is drawn separately from the building, on whichever side the inlet faces:
+# a sluice gate once the building has grown, a water-drop sign before that. Anchor (0, 0) is the
+# middle of the inlet tile's edge where it meets the building.
+INLET_ART = ("inlet_gate", "inlet_sign")
+INLET_FRAME = (-60, -90, 120, 110)
+
 
 @dataclass(frozen=True)
 class BuildingType:
@@ -30,9 +36,10 @@ class BuildingType:
 
     @property
     def inlet_tile(self) -> tuple[int, int] | None:
-        """Where an irrigation channel must end to water this building, as a (column, row) tile offset
-        from the footprint's top-left tile: directly in front of the left-hand column. Only buildings
-        that sprout units use water."""
+        """Where an irrigation channel must end to water this building, for a base in the top-left
+        quarter: a (column, row) tile offset from the footprint's top-left tile, directly in front of the
+        left-hand column. Other quarters mirror it so the inlet always faces the middle of the map (see
+        World.inlet_tile). Only buildings that sprout units use water."""
         return (0, self.footprint) if self.sprouts else None
 
 

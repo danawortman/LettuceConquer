@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-60 -90 120 110" width="120" height="110">
+  <!-- Lettuce Conquer: irrigation inlet marker: water-drop sign on a stake. Anchor (0, 0) is the middle of the inlet tile's edge where it meets the building. Inline attributes only: pygame/nanosvg ignores CSS and text. -->
+  <g><path d="M22 6 L22 -40" fill="none" stroke="#2b2118" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/><path d="M22 6 L22 -40" fill="none" stroke="#a0703c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><rect x="10" y="-66" width="24" height="26" rx="2" fill="#fffaf0" stroke="#2b2118" stroke-width="2.5"/><path d="M22 -62 Q14 -50 18 -46 Q22 -42 26 -46 Q30 -50 22 -62 Z" fill="#6fc3e8" stroke="#2b2118" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></g>
+</svg>
