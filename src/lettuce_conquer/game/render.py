@@ -382,7 +382,8 @@ def draw_hud(screen, font, world: World, speed: int, paused: bool) -> None:
             x += 30 + label.get_width()
     if world.winner is not None:
         draw_banner(screen, world)
-    help_text = "Arrows/WASD or right-drag: pan   Wheel: zoom   Space: pause   [ ]: speed   Click: inspect   Tab: next unit   Esc: quit"
+    help_text = ("Arrows/WASD or right-drag: pan   Wheel: zoom   Space: pause   [ ]: speed   Click: inspect   "
+                 "Tab: next unit   F11: full screen   Esc: quit")
     hint = font.render(help_text, True, INK)
     back = pygame.Surface((hint.get_width() + 16, 26), pygame.SRCALPHA)
     back.fill((246, 239, 217, 225))

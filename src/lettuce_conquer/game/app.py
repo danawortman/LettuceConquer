@@ -1,17 +1,19 @@
 """Run a game: behavior trees drive every army; you watch, pan, zoom and inspect.
 
+The game opens full screen (F11 switches to a window and back; `--windowed` starts in one).
 `--screenshot PATH` runs headlessly for `--ticks` ticks, draws one frame and saves it.
 """
 from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 from lettuce_conquer.sim.data import TICKS_PER_SECOND, TILE
 from lettuce_conquer.sim.world import World
 
-WINDOW_SIZE = (1280, 720)
+WINDOW_SIZE = (1280, 720)  # windowed size, and the size of headless screenshots
 SPEEDS = (1, 2, 4, 8)
 PAN_SPEED = 900  # screen pixels per second
 
@@ -26,6 +28,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--zoom", type=float, default=0.5)
     parser.add_argument("--inspect", type=int, help="select the unit with this id at the start")
     parser.add_argument("--inspect-team", type=int, help="select this team's planner at the start")
+    parser.add_argument("--windowed", action="store_true", help="start in a window instead of full screen")
     parser.add_argument("--screenshot", type=Path, help="draw one frame to this PNG and exit")
     args = parser.parse_args(argv)
 
@@ -38,9 +41,22 @@ def main(argv: list[str] | None = None) -> None:
     for _ in range(args.ticks):
         world.step()
 
+    if sys.platform == "win32" and not args.screenshot:
+        try:  # draw at the screen's real resolution instead of letting Windows scale (and blur) the game
+            import ctypes
+            ctypes.windll.user32.SetProcessDPIAware()
+        except (AttributeError, OSError):
+            pass
+
+    def open_display(fullscreen: bool):
+        if fullscreen:
+            return pygame.display.set_mode((0, 0), pygame.FULLSCREEN)  # the desktop's own resolution
+        return pygame.display.set_mode(WINDOW_SIZE, pygame.RESIZABLE)
+
     pygame.init()
     try:
-        screen = pygame.display.set_mode(WINDOW_SIZE)
+        fullscreen = not (args.windowed or args.screenshot)
+        screen = open_display(fullscreen)
         pygame.display.set_caption("Lettuce Conquer: Leaf No One Behind")
         font, small = pygame.font.Font(None, 26), pygame.font.Font(None, 22)
         zoom = min(render.ZOOM_STEPS, key=lambda z: abs(z - args.zoom))
@@ -78,6 +94,9 @@ def main(argv: list[str] | None = None) -> None:
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         running = False
+                    elif event.key == pygame.K_F11:
+                        fullscreen = not fullscreen
+                        screen = open_display(fullscreen)
                     elif event.key == pygame.K_SPACE:
                         paused = not paused
                     elif event.key == pygame.K_RIGHTBRACKET:
@@ -89,6 +108,8 @@ def main(argv: list[str] | None = None) -> None:
                         nxt = ids[(ids.index(selected.id) + 1) % len(ids)] if selected in world.units else ids[0]
                         selected = next(u for u in world.units if u.id == nxt)
                         cam.center_on(selected.x, selected.y, screen)
+                elif event.type == pygame.VIDEORESIZE:
+                    screen = pygame.display.get_surface()
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     selected = render.pick(world, cam, event.pos, carry * TICKS_PER_SECOND * SPEEDS[speed_i])
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:

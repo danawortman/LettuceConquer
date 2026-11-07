@@ -41,7 +41,10 @@ winner (seed 1: Red, at tick 3,904, about 6½ minutes of game time; use `]` to s
 - Click a Greenhouse: show that team's planner tree
 - `Tab`: jump to the next unit
 - `Space`: pause; `[` / `]`: slower / faster
+- `F11`: switch between full screen and a window
 - `Esc`: quit
+
+The game opens full screen at the desktop's resolution; `--windowed` starts it in a resizable window.
 
 Headless frame: `.venv/Scripts/python -m lettuce_conquer --ticks 200 --screenshot screenshots/game.png`
 
