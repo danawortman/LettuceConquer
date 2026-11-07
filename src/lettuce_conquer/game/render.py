@@ -153,12 +153,12 @@ def draw_world(screen: pygame.Surface, world: World, cam: Camera, alpha: float =
         flip = world.flips(world.teams[b.team])[0] < 0  # mirrored quarters get mirrored art (inlet side)
         standing.append((gy, gx, b.id, lambda b=b, g=(gx, gy), c=color, f=flip: art.blit_building(
             screen, b.kind, b.state, c, cam.to_screen(*g), z, f)))
-        inlet = world.inlet_tile(b)
-        if inlet is not None:  # a sluice gate once grown, a water-drop sign before that
+        anchor = inlet_anchor(world, b)
+        if anchor is not None:  # a sluice gate once grown, a water-drop sign before that
             stem = "inlet_sign" if b.state in ("planted", "sprout") else "inlet_gate"
-            ax = (inlet[0] + 0.5) * TILE
-            ay = (inlet[1] if inlet[1] >= b.y + b.h else inlet[1] + 1) * TILE  # the edge it shares with the building
-            standing.append((ay + 1, ax, b.id, lambda s=stem, a=(ax, ay), f=flip: art.blit_inlet(
+            ax, ay, back = anchor
+            key = b.y * TILE + 1 if back else ay + 1  # back gates draw behind the building, front ones in front
+            standing.append((key, ax, b.id, lambda s=stem, a=(ax, ay), f=flip: art.blit_inlet(
                 screen, s, cam.to_screen(*a), z, f)))
     for u in world.units:
         gx, gy = unit_position(u, alpha)
@@ -178,6 +178,41 @@ def draw_world(screen: pygame.Surface, world: World, cam: Camera, alpha: float =
         sx, sy = cam.to_screen(gx, gy)
         if -margin < sx < sw + margin and -margin * 0.3 < sy < sh + margin * 1.6:
             draw()
+
+
+BACK_GATE_GAP = 6  # art units between a back-side gate and the top of the building's drawing
+
+
+def inlet_anchor(world: World, b):
+    """Where to draw a building's inlet gate or sign: (world x, world y, at the back?), or None. A front
+    inlet stands on the edge its tile shares with the building. A back inlet (bases in the bottom half,
+    facing the middle) is pulled forward to stand just behind the drawing, since beds are drawn low."""
+    inlet = world.inlet_tile(b)
+    if inlet is None:
+        return None
+    ax = (inlet[0] + 0.5) * TILE
+    if inlet[1] >= b.y + b.h:
+        return ax, inlet[1] * TILE, False
+    ground = (b.y + b.h) * TILE
+    return ax, max(b.y * TILE, ground + art.art_top(b.kind, b.state) - BACK_GATE_GAP), True
+
+
+def draw_inlet_runs(screen, world: World, cam: Camera, wet: set) -> None:
+    """For back inlets: the dug channel carries on from the inlet tile across the footprint's back tiles
+    to the pulled-forward gate (the building's drawing covers the rest)."""
+    z = cam.zoom
+    for b in world.buildings:
+        anchor = inlet_anchor(world, b)
+        inlet = world.inlet_tile(b)
+        ch = world.channels.get(inlet) if inlet is not None else None
+        if anchor is None or not anchor[2] or ch is None or not ch.dug:
+            continue
+        piece = art.channel_surface("straight", "wet" if inlet in wet else "dry", 1, z)
+        for row in range(b.y, b.y + b.h):
+            if row * TILE >= anchor[1]:
+                break
+            sx, sy = cam.to_screen(inlet[0] * TILE, row * TILE)
+            screen.blit(piece, (round(sx), round(sy)))
 
 
 CHANNEL_SIDES = {"N": (0, -1), "E": (1, 0), "S": (0, 1), "W": (-1, 0)}
@@ -207,6 +242,7 @@ def draw_channels(screen, world: World, cam: Camera) -> None:
     ts = round(TILE * z)
     sw, sh = screen.get_size()
     wet, ends = world.wet_channels(), channel_ends(world)
+    draw_inlet_runs(screen, world, cam, wet)
     for (x, y), ch in world.channels.items():
         sx, sy = cam.to_screen(x * TILE, y * TILE)
         if not (-ts < sx < sw and -ts < sy < sh):

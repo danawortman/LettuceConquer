@@ -128,8 +128,8 @@ team planner). `unit_gather`, `planner_rally` and `unit_wander` are simpler exam
   Compost at once and draws the Water from the connected can a little each tick; sprouting pauses while
   the can is dry. The new unit appears beside the inlet.
 - **Inlets face the middle of the map.** The armies' bases are mirrored, so building and can art is
-  mirrored too, and the sluice gate sits on the side facing the middle (at the back of the building for
-  bases in the bottom half). Every tie is broken in the team's own mirrored view, so mirrored armies
+  mirrored too, and the sluice gate sits on the side facing the middle. In bases in the bottom half that
+  is the back, so the gate is drawn just behind the building's drawing and the channel runs on to meet it. Every tie is broken in the team's own mirrored view, so mirrored armies
   make mirrored choices; a test checks every unit, building and channel against its twin.
 
 | Building | Lumber | Stone | Tending |

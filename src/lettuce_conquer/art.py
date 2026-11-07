@@ -97,6 +97,23 @@ def blit_inlet(dest: pygame.Surface, stem: str, anchor: tuple[float, float], sca
     return dest.blit(surf, (round(anchor[0] + left * scale), round(anchor[1] + fy * scale)))
 
 
+@lru_cache(maxsize=None)
+def art_top(building: str, state: str) -> int:
+    """How high the solid body of the building's drawing reaches above its ground point (art units,
+    negative is up) across its inlet column. Thin parts (poles, lattice, leaves) don't count. Beds are
+    drawn low, so an inlet at the back of the footprint stands here, against the drawing, instead of out
+    on the footprint's back edge."""
+    b = BUILDINGS[building]
+    fx, fy, _, _ = FRAMES[b.footprint]
+    surf = _rasterize(building_path(building, state), "blue", *FRAMES[b.footprint][2:])
+    x = round(-fx + (0.5 - b.footprint / 2) * 120)  # the left-hand column; mirrored art mirrors it too
+    span = range(x - 30, x + 31)
+    for y in range(surf.get_height()):
+        if sum(surf.get_at((i, y))[3] > 0 for i in span) * 10 >= len(span) * 9:  # a row at least 90% solid
+            return y + fy
+    return 0
+
+
 @lru_cache(maxsize=256)
 def channel_surface(piece: str, state: str, turns: int, scale: float) -> pygame.Surface:
     """A channel piece turned `turns` quarter turns clockwise, at `scale` (a tile is 120 * scale)."""

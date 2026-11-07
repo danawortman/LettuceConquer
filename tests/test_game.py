@@ -40,3 +40,27 @@ def test_wet_channels_draw_blue_in_every_base():
         render.draw_channels(screen, world, cam)  # the channels alone: water at the inlet tile's middle
         r, g, b, _ = screen.get_at((400, 300))
         assert b > r + 40, (team.color, (r, g, b))
+
+
+
+def test_back_inlet_gates_stand_against_the_building_drawing():
+    import pygame
+    from lettuce_conquer import art
+    from lettuce_conquer.game import render
+    from lettuce_conquer.sim.data import TILE
+    pygame.init()
+    world = World(seed=1, teams=4)
+    for team in world.teams:
+        x, y = world.find_site(team, "cabbage_patch", team.spawn)
+        world.place_building(team, "cabbage_patch", x, y)
+    for b in world.buildings:
+        ax, ay, back = render.inlet_anchor(world, b)
+        inlet = world.inlet_tile(b)
+        assert ax == (inlet[0] + 0.5) * TILE
+        if world.flips(world.teams[b.team])[1] > 0:  # top-half bases: the gate is in front, on the shared edge
+            assert not back and ay == (b.y + b.h) * TILE
+        else:  # bottom-half bases: pulled in from the back edge to just behind the low drawing
+            ground = (b.y + b.h) * TILE
+            assert back and b.y * TILE <= ay < ground
+            assert ay == max(b.y * TILE, ground + art.art_top(b.kind, b.state) - render.BACK_GATE_GAP)
+    assert art.art_top("cabbage_patch", "grown") > -2 * TILE  # beds really are drawn lower than their footprint
