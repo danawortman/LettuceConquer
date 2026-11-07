@@ -357,38 +357,189 @@ def pick(world: World, cam: Camera, pos, alpha: float = 1.0):
     return None
 
 
+PANEL_WIDTH = 214
+PANEL_MARGIN = 10
+PANEL_FILL = (246, 239, 217, 175)   # semi-transparent: the map shows through
+ROW_MAX, ROW_MIN = 30, 18           # row height; rows shrink when two panels share one side of the screen
+UNIT_ICONS = ("spud", "cabbage", "pea", "carrot")
+BUILDING_ICONS = ("greenhouse", "root_cellar", "cabbage_patch", "pea_trellis", "carrot_bed", "scarecrow")
+SHORT_NAMES = {"scarecrow": "Scarecrow"}
+HEADER_H, GAP = 30, 8
+HELP = ("Arrows/WASD or right-drag: pan", "Wheel: zoom", "Space: pause", "[ ]: speed", "Click: inspect",
+        "Tab: next unit", "F11: full screen", "Esc: quit")
+
+
+def _rows() -> int:
+    return len(UNIT_ICONS) + len(BUILDING_ICONS) + 4  # units, buildings and the four resources
+
+
+def panel_layout(screen, world: World) -> tuple[dict, int]:
+    """Each army's panel (in the corner of the screen matching its base's corner of the map) and the row height."""
+    sw, sh = screen.get_size()
+    corners = {t.id: world.flips(t) for t in world.teams}
+    shared = any(c[1] > 0 for c in corners.values()) and any(c[1] < 0 for c in corners.values())
+    fixed = HEADER_H + 2 * GAP + 10
+    room = (sh - 3 * PANEL_MARGIN) // 2 if shared else sh - 2 * PANEL_MARGIN
+    row = max(ROW_MIN, min(ROW_MAX, (room - fixed) // _rows()))
+    h = fixed + row * _rows()
+    rects = {}
+    for tid, (sx, sy) in corners.items():
+        x = PANEL_MARGIN if sx > 0 else sw - PANEL_WIDTH - PANEL_MARGIN
+        y = PANEL_MARGIN if sy > 0 else sh - h - PANEL_MARGIN
+        rects[tid] = pygame.Rect(x, y, PANEL_WIDTH, h)
+    return rects, row
+
+
+def panel_rects(screen, world: World) -> dict:
+    return panel_layout(screen, world)[0]
+
+
+def panel_at(screen, world: World, pos):
+    """The team whose panel is under `pos`, if any."""
+    for tid, rect in panel_rects(screen, world).items():
+        if rect.collidepoint(pos):
+            return world.teams[tid]
+    return None
+
+
+def _icon(surf, height: int):
+    """Trim a sprite to its drawn pixels and scale it to `height`."""
+    rect = surf.get_bounding_rect()
+    part = surf.subsurface(rect)
+    w = max(1, round(rect.width * height / max(1, rect.height)))
+    return pygame.transform.smoothscale(part, (w, height))
+
+
+_ICONS: dict = {}
+
+
+def icon(kind: str, team: str, height: int):
+    key = (kind, team, height)
+    if key not in _ICONS:
+        if kind in UNIT_HP:
+            surf = art.unit_surface(kind, "idle", team, 0.4)
+        else:
+            surf = art.building_surface(kind, "grown", team, 0.3)
+        _ICONS[key] = _icon(surf, height)
+    return _ICONS[key]
+
+
+def draw_army_panel(screen, font, world: World, team, rect, row: int) -> None:
+    from lettuce_conquer.buildings import BUILDINGS
+    from lettuce_conquer.units import UNITS
+    color = pygame.Color(art.TEAM_COLORS[team.color])
+    panel = pygame.Surface(rect.size, pygame.SRCALPHA)
+    panel.fill(PANEL_FILL)
+    pygame.draw.rect(panel, (*color[:3], 230), panel.get_rect(), 3, border_radius=10)
+    pygame.draw.circle(panel, color, (18, 17), 8)
+    pygame.draw.circle(panel, INK, (18, 17), 8, 2)
+    panel.blit(font.render(f"{team.color.capitalize()} army", True, INK), (32, 10))
+    if not team.alive:
+        panel.blit(font.render("out: Greenhouse", True, UNVISITED), (14, HEADER_H + 8))
+        panel.blit(font.render("destroyed", True, UNVISITED), (14, HEADER_H + 26))
+        screen.blit(panel, rect)
+        return
+    units = [u for u in world.units if u.team == team.id]
+    growing = [b.sprout_kind for b in world.buildings if b.team == team.id and b.sprout_kind]
+    mine = [b for b in world.buildings if b.team == team.id]
+    pic_h = row - 4
+    text_y = (row - font.get_height()) // 2
+
+    def line(y, pic, name, count, extra, faded=False):
+        """One row: the art (or a resource dot), the name, and the count on the right."""
+        if pic is None:
+            return
+        if isinstance(pic, tuple):  # a resource colour
+            r = max(5, row // 4)
+            pygame.draw.circle(panel, pic, (12 + 18, y + row // 2), r)
+            pygame.draw.circle(panel, INK, (12 + 18, y + row // 2), r, 1)
+        else:
+            panel.blit(pic, (12 + 18 - pic.get_width() // 2, y + 2))
+        ink = UNVISITED if faded else INK
+        panel.blit(font.render(name, True, ink), (60, y + text_y))
+        label = font.render(str(count) + (f"+{extra}" if extra else ""), True, ink)
+        panel.blit(label, (rect.width - 14 - label.get_width(), y + text_y))
+
+    y = HEADER_H + 4
+    for kind in UNIT_ICONS:  # units, with "+n" for ones still sprouting
+        have = sum(1 for u in units if u.kind == kind)
+        extra = sum(1 for k in growing if k == kind)
+        line(y, icon(kind, team.color, pic_h), UNITS[kind].name, have, extra, faded=not (have or extra))
+        y += row
+    y += GAP
+    for kind, amount in team.stock.items():  # resources
+        line(y, RESOURCE_COLORS[kind], kind.capitalize(), amount, 0)
+        y += row
+    y += GAP
+    for kind in BUILDING_ICONS:  # buildings grown, with "+n" for ones still growing
+        done = sum(1 for b in mine if b.kind == kind and b.progress >= b.work)
+        extra = sum(1 for b in mine if b.kind == kind and b.progress < b.work)
+        name = SHORT_NAMES.get(kind, BUILDINGS[kind].name)
+        line(y, icon(kind, team.color, pic_h), name, done, extra, faded=not (done or extra))
+        y += row
+    pygame.draw.line(panel, (*INK[:3], 60), (12, HEADER_H + 4 + row * 4 + GAP // 2),
+                     (rect.width - 12, HEADER_H + 4 + row * 4 + GAP // 2))
+    pygame.draw.line(panel, (*INK[:3], 60), (12, HEADER_H + 4 + row * 8 + GAP + GAP // 2),
+                     (rect.width - 12, HEADER_H + 4 + row * 8 + GAP + GAP // 2))
+    screen.blit(panel, rect)
+
+
+def _wrap(font, items, width: int) -> list:
+    """Join `items` into as few centred lines as fit in `width`."""
+    lines, line = [], ""
+    for item in items:
+        trial = item if not line else line + "    " + item
+        if line and font.size(trial)[0] > width:
+            lines.append(line)
+            line = item
+        else:
+            line = trial
+    return lines + ([line] if line else [])
+
+
 def draw_hud(screen, font, world: World, speed: int, paused: bool) -> None:
-    w = screen.get_width()
-    bar = pygame.Surface((w, 34 + 22 * len(world.teams)), pygame.SRCALPHA)
-    bar.fill((246, 239, 217, 225))
-    screen.blit(bar, (0, 0))
-    text = f"Lettuce Conquer   seed {world.seed}   tick {world.tick}   speed x{speed}{'   PAUSED' if paused else ''}"
-    screen.blit(font.render(text, True, INK), (10, 8))
-    for i, team in enumerate(world.teams):  # each team's stock
-        y = 32 + 22 * i
-        pygame.draw.circle(screen, pygame.Color(art.TEAM_COLORS[team.color]), (18, y + 8), 7)
-        x = 34
-        if not team.alive:
-            screen.blit(font.render("out: Greenhouse destroyed", True, UNVISITED), (x, y))
-            continue
-        units = sum(1 for u in world.units if u.team == team.id)
-        label = font.render(f"units {units}", True, INK)
-        screen.blit(label, (x, y))
-        x += 20 + label.get_width()
-        for kind, amount in team.stock.items():
-            pygame.draw.circle(screen, RESOURCE_COLORS[kind], (x + 6, y + 8), 6)
-            label = font.render(f"{kind} {amount}", True, INK)
-            screen.blit(label, (x + 16, y))
-            x += 30 + label.get_width()
+    sw, sh = screen.get_size()
+    rects, row = panel_layout(screen, world)
+    for team in world.teams:
+        draw_army_panel(screen, font, world, team, rects[team.id], row)
+    side_room = sw - 2 * (PANEL_WIDTH + 2 * PANEL_MARGIN)  # between the left and right panel columns
+
+    # the title line, top centre
+    text = f"seed {world.seed}    tick {world.tick}    speed x{speed}{'    PAUSED' if paused else ''}"
+    if font.size("Lettuce Conquer    " + text)[0] + 24 <= side_room:  # the title only when there's room
+        text = "Lettuce Conquer    " + text
+    label = font.render(text, True, INK)
+    box = label.get_rect(midtop=(sw // 2, PANEL_MARGIN + 4)).inflate(24, 10)
+    _pill(screen, box)
+    screen.blit(label, label.get_rect(center=box.center))
+
     if world.winner is not None:
         draw_banner(screen, world)
-    help_text = ("Arrows/WASD or right-drag: pan   Wheel: zoom   Space: pause   [ ]: speed   Click: inspect   "
-                 "Tab: next unit   F11: full screen   Esc: quit")
-    hint = font.render(help_text, True, INK)
-    back = pygame.Surface((hint.get_width() + 16, 26), pygame.SRCALPHA)
-    back.fill((246, 239, 217, 225))
-    screen.blit(back, (0, screen.get_height() - 26))
-    screen.blit(hint, (8, screen.get_height() - 22))
+
+    # the controls, bottom centre, wrapped to fit between the bottom panels
+    lines = _wrap(font, HELP, max(200, side_room - 24))
+    line_h = font.get_linesize()
+    y = sh - PANEL_MARGIN - line_h * len(lines) - 8
+    box = pygame.Rect(0, 0, max(font.size(t)[0] for t in lines) + 24, line_h * len(lines) + 8)
+    box.midtop = (sw // 2, y - 4)
+    _pill(screen, box)
+    for i, text in enumerate(lines):
+        label = font.render(text, True, INK)
+        screen.blit(label, label.get_rect(midtop=(sw // 2, y + i * line_h)))
+
+
+def _pill(screen, box) -> None:
+    back = pygame.Surface(box.size, pygame.SRCALPHA)
+    back.fill(PANEL_FILL)
+    screen.blit(back, box)
+
+
+def inspector_area(screen, world: World) -> pygame.Rect:
+    """The open space for the tree inspector: between the left and right panel columns, below the title
+    line and above the controls."""
+    sw, sh = screen.get_size()
+    left = PANEL_WIDTH + 2 * PANEL_MARGIN
+    return pygame.Rect(left, 48, sw - 2 * left, sh - 48 - 100)
 
 
 def draw_banner(screen, world: World) -> None:
@@ -447,11 +598,12 @@ def draw_inspector(screen, font, small, world: World, agent) -> None:
     rows += [(0, None, f"  {k} = {v}", INK) for k, v in agent.bb.items()]
     rows += [(0, None, f"{k}: {v}", INK) for k, v in extra.items()]
 
-    top = 44 + 22 * len(world.teams)
+    area = inspector_area(screen, world)
     head, col_w, line_h = 60, 480, 18
-    per_col = max(1, (screen.get_height() - top - 40 - head) // line_h)
+    per_col = max(1, (area.height - head - 10) // line_h)
     cols = -(-len(rows) // per_col)
     per_col = -(-len(rows) // cols)  # balance the columns
+    col_w = min(col_w, area.width // cols)  # long lines are clipped to fit
     width, height = col_w * cols, head + line_h * per_col + 10
     panel = pygame.Surface((width, height), pygame.SRCALPHA)
     panel.fill((246, 239, 217, 235))
@@ -466,4 +618,4 @@ def draw_inspector(screen, font, small, world: World, agent) -> None:
         panel.set_clip(pygame.Rect(col_w * (i // per_col), 0, col_w - 6, height))
         panel.blit(small.render(text, True, color), (x, y))
         panel.set_clip(None)
-    screen.blit(panel, (max(0, screen.get_width() - width - 10), top))
+    screen.blit(panel, (area.right - width, area.top))

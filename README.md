@@ -26,8 +26,7 @@ Bed, plans irrigation channels to everything that sprouts, and sprouts more Spud
 Compost and Water allow, and plants a Scarecrow. Spuds gather, tend new buildings until they grow,
 dig channels and carry water to the Watering Cans. Fighters guard home and fight any enemy in sight;
 once a team has 7 fighters it raids the nearest enemy Greenhouse, and calls the raid off when fewer
-than 3 are left. A team whose Greenhouse falls is out; the last team standing wins. The top bar shows
-each team's units and stock.
+than 3 are left. A team whose Greenhouse falls is out; the last team standing wins.
 
 The armies are mirrored and run the same trees, so 2 or 4 armies usually fight to a standstill or a
 draw. Three armies aren't symmetric (one sits between the other two), so `--teams 3` produces a
@@ -38,13 +37,18 @@ winner (seed 1: Red, at tick 3,904, about 6½ minutes of game time; use `]` to s
 - Arrow keys / WASD, or right-drag: pan
 - Mouse wheel: zoom
 - Click a unit: show its behavior tree, colored by what ran this tick, and its blackboard
-- Click a Greenhouse: show that team's planner tree
+- Click a Greenhouse, or an army's panel: show that team's planner tree
 - `Tab`: jump to the next unit
 - `Space`: pause; `[` / `]`: slower / faster
 - `F11`: switch between full screen and a window
 - `Esc`: quit
 
 The game opens full screen at the desktop's resolution; `--windowed` starts it in a resizable window.
+
+Each army has a tall see-through panel in the corner of the screen matching its base's corner of the
+map, one row per item with its art: how many of each unit it has (with "+1" for one still sprouting),
+its four resources, and how many of each building it has grown (with "+1" for one still growing). The seed, tick and speed are at the top
+centre and the controls at the bottom centre.
 
 Headless frame: `.venv/Scripts/python -m lettuce_conquer --ticks 200 --screenshot screenshots/game.png`
 

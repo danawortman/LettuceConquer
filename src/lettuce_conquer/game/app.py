@@ -110,8 +110,9 @@ def main(argv: list[str] | None = None) -> None:
                         cam.center_on(selected.x, selected.y, screen)
                 elif event.type == pygame.VIDEORESIZE:
                     screen = pygame.display.get_surface()
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    selected = render.pick(world, cam, event.pos, carry * TICKS_PER_SECOND * SPEEDS[speed_i])
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:  # an army's panel, or the map
+                    selected = render.panel_at(screen, world, event.pos) or render.pick(
+                        world, cam, event.pos, carry * TICKS_PER_SECOND * SPEEDS[speed_i])
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                     dragging = event.pos
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:

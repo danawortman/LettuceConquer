@@ -95,3 +95,33 @@ def test_battle_drawing_health_wilt_and_winner_banner():
     world.teams[1].alive, world.winner = False, 0
     render.draw_hud(screen, font, world, 1, False)
     assert lettering() > 200  # "Blue wins!" across the middle of the screen
+
+
+@pytest.mark.parametrize("size", [(1920, 1080), (1280, 720)])
+def test_army_panels_sit_in_their_corners_and_leave_room_for_the_rest(size):
+    import pygame
+    from lettuce_conquer.game import render
+    pygame.init()
+    screen = pygame.Surface(size)
+    font = pygame.font.Font(None, 22)
+    world = World(seed=1, teams=4)
+    rects = render.panel_rects(screen, world)
+    sw, sh = size
+    for team in world.teams:  # each army's panel is in its own base's corner of the screen
+        sx, sy = world.flips(team)
+        r = rects[team.id]
+        assert (r.left < sw // 2) == (sx > 0) and (r.top < sh // 2) == (sy > 0)
+        assert screen.get_rect().contains(r)
+        assert render.panel_at(screen, world, r.center) is team
+    assert render.panel_at(screen, world, (sw // 2, sh // 2)) is None
+    room = sw - 2 * (render.PANEL_WIDTH + 2 * render.PANEL_MARGIN)
+    lines = render._wrap(font, render.HELP, room - 24)
+    assert all(font.size(t)[0] <= room for t in lines)
+    assert " ".join(lines).split() == " ".join(render.HELP).split()  # nothing lost in the wrapping
+    left, right = [r for r in rects.values() if r.left < sw // 2], [r for r in rects.values() if r.left >= sw // 2]
+    for side in (left, right):  # panels sharing a side of the screen don't overlap, and are taller than wide
+        assert not any(a.colliderect(b) for a in side for b in side if a is not b)
+        assert all(r.height > r.width for r in side)
+    area = render.inspector_area(screen, world)
+    assert not any(area.colliderect(r) for r in rects.values())
+    render.draw_hud(screen, font, world, 8, True)  # draws, paused, at either size
