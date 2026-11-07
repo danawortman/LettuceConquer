@@ -90,7 +90,10 @@ def test_planned_channel_connects_the_can_once_dug():
     assert run_node(world, "order_channel", kind="greenhouse") == bt.SUCCESS
     route = {t for t, c in world.channels.items() if c.team == 0}
     can = can_of(world)
-    assert world.inlet_tile(gh) in route and world.outlet_tile(can) in route and gh.can == can.id
+    out = world.outlet_tile(can)
+    assert world.inlet_tile(gh) in route and out not in route and gh.can == can.id
+    assert any(abs(x - out[0]) + abs(y - out[1]) == 1 for x, y in route)  # it joins the can's ready-made outlet
+    route.add(out)
     assert world.connected_can(gh) is None  # planned isn't dug
     dig_all(world)
     assert world.connected_can(gh) is can
@@ -276,3 +279,16 @@ def test_building_fertile_condition():
     world.place_building(world.teams[0], "cabbage_patch", x, y)
     assert run_node(world, "building_fertile", kind="cabbage_patch", percent=data.FERTILE_BONUS) == bt.SUCCESS
     assert run_node(world, "building_fertile", team=1, kind="cabbage_patch") == bt.FAILURE
+
+
+def test_every_can_comes_with_its_outlet_tile_dug_free_and_neutral():
+    from lettuce_conquer.sim.world import NEUTRAL
+    world = World(seed=3, teams=4, trees=NO_PLANS)
+    for can in (t for t in world.things if t.kind == "watering_can"):
+        ch = world.channels[world.outlet_tile(can)]
+        assert ch.team == NEUTRAL and ch.dug and ch.paid
+        assert world.outlet_tile(can) in world.wet_channels()  # the puddle feeds it
+    assert all(t.stock["lumber"] == 0 for t in world.teams)
+    unit = next(u for u in world.units if u.team == 0 and u.kind == "spud")
+    ctx = bt.Context(world, unit, world.teams[0], "unit", path="t")
+    assert bt.NODES["find_channel_work"].fn(ctx, key="ditch") == bt.FAILURE  # nothing for Spuds to dig

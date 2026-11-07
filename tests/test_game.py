@@ -64,3 +64,34 @@ def test_back_inlet_gates_stand_against_the_building_drawing():
             assert back and b.y * TILE <= ay < ground
             assert ay == max(b.y * TILE, ground + art.art_top(b.kind, b.state) - render.BACK_GATE_GAP)
     assert art.art_top("cabbage_patch", "grown") > -2 * TILE  # beds really are drawn lower than their footprint
+
+
+def test_battle_drawing_health_wilt_and_winner_banner():
+    import pygame
+    from lettuce_conquer.game import render
+    from lettuce_conquer.sim import data
+    pygame.init()
+    screen = pygame.Surface((800, 600))
+    font = pygame.font.Font(None, 26)
+    world = World(seed=3, teams=2)
+    gh = next(b for b in world.buildings if b.team == 0)
+    gh.hp = data.BUILDING_HP["greenhouse"] // 3  # badly damaged: drawn wilted, with a health bar
+    for u in world.units:
+        u.hp = data.UNIT_HP[u.kind] // 2
+        u.battle_until = world.tick + 10
+    pea = next(u for u in world.units if u.kind == "pea")
+    pea.shot = [pea.x + 300, pea.y, world.tick - 1]
+    cam = render.Camera(0, 0, 0.5)
+    cam.center_on(*world.center(gh.x + 1, gh.y + 1), screen)
+    render.draw_world(screen, world, cam, alpha=0.5)  # battle art, health bars, wilted Greenhouse, a pea in flight
+    from lettuce_conquer import art
+    blue = pygame.Color(art.TEAM_COLORS["blue"])[:3]
+
+    def lettering():
+        return sum(screen.get_at((x, y))[:3] == blue for x in range(250, 550) for y in range(280, 320))
+    screen.fill((0, 0, 0))
+    render.draw_hud(screen, font, world, 1, False)
+    assert lettering() == 0  # no result yet
+    world.teams[1].alive, world.winner = False, 0
+    render.draw_hud(screen, font, world, 1, False)
+    assert lettering() > 200  # "Blue wins!" across the middle of the screen

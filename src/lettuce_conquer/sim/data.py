@@ -18,10 +18,10 @@ DEMO_ARMY = ("spud", "spud", "cabbage", "pea", "carrot")
 # Which behavior tree each unit kind runs, and the team planner's tree (files in lettuce_conquer/trees/).
 DEFAULT_TREES = {
     "spud": "unit_worker",
-    "cabbage": "unit_follow_rally",
-    "pea": "unit_follow_rally",
-    "carrot": "unit_follow_rally",
-    "planner": "planner_grow",
+    "cabbage": "unit_fighter",
+    "pea": "unit_fighter",
+    "carrot": "unit_fighter",
+    "planner": "planner_battle",
 }
 
 # ---------------------------------------------------------------- economy
@@ -35,6 +35,10 @@ YIELDS = {
     "rocks_a": ("stone", 200),
     "rocks_b": ("stone", 200),
     "lake": ("water", 0),   # endless: carried to Watering Cans to refill them
+    "remains_spud": ("compost", 20),      # Compost piles left by fallen units
+    "remains_cabbage": ("compost", 40),
+    "remains_pea": ("compost", 30),
+    "remains_carrot": ("compost", 35),
 }
 TREES = ("apple_tree", "pine_tree")   # become stumps and regrow instead of disappearing
 TREE_REGROW_TICKS = 600
@@ -75,3 +79,20 @@ CHANNEL_COST = 5     # Lumber per channel tile, paid when digging starts
 CHANNEL_WORK = 30    # Spud-ticks to dig one tile
 CAN_CAPACITY = 500   # Water a Watering Can holds
 ENDLESS = ("lake",)  # sources that never run out
+
+# ---------------------------------------------------------------- combat
+UNIT_HP = {"spud": 40, "cabbage": 120, "pea": 60, "carrot": 80}
+ATTACK = {  # damage per hit, reach in tiles (1 = the next tile, diagonals too), ticks between hits
+    "cabbage": {"damage": 12, "range": 1, "cooldown": 10},
+    "pea": {"damage": 8, "range": 4, "cooldown": 10},
+    "carrot": {"damage": 14, "range": 1, "cooldown": 8},
+}
+BEATS = {"cabbage": "pea", "pea": "carrot", "carrot": "cabbage"}   # each deals double to the one it beats
+COUNTER_PERCENT = 200     # damage against the unit you beat
+COUNTERED_PERCENT = 50    # damage against the unit that beats you
+SIGHT = 6                 # tiles: how far units notice enemies (and switch to battle mode)
+BATTLE_LINGER = 30        # ticks a unit stays in battle mode after its last fight
+
+BUILDING_HP = {"greenhouse": 1500, "root_cellar": 400, "cabbage_patch": 400, "pea_trellis": 400,
+               "carrot_bed": 400, "scarecrow": 300}
+SCARECROW = {"damage": 6, "range": 5, "cooldown": 10}   # the crow on its arm does the attacking

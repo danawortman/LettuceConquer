@@ -1,0 +1,38 @@
+{
+  "name": "Fight, raid, guard",
+  "scope": "unit",
+  "description": "Checked from the top every tick: fight any enemy unit in sight; otherwise join the team's raid on its target; otherwise guard the rally point.",
+  "root": {
+    "type": "reactive_selector",
+    "children": [
+      {
+        "type": "sequence",
+        "label": "fight enemies in sight",
+        "children": [
+          {"type": "action", "name": "find_enemy", "args": {"key": "foe", "range": 6}},
+          {"type": "action", "name": "attack", "args": {"key": "foe"}}
+        ]
+      },
+      {
+        "type": "sequence",
+        "label": "join the raid",
+        "children": [
+          {"type": "condition", "name": "team_has_key", "args": {"key": "target"}},
+          {"type": "action", "name": "copy_team_value", "args": {"team_key": "target", "key": "raid"}},
+          {"type": "action", "name": "attack", "args": {"key": "raid"}}
+        ]
+      },
+      {
+        "type": "sequence",
+        "label": "guard the rally point",
+        "children": [
+          {"type": "condition", "name": "team_has_key", "args": {"key": "rally"}},
+          {"type": "action", "name": "copy_team_key", "args": {"team_key": "rally", "key": "goal", "spread": 1}},
+          {"type": "action", "name": "move_to", "args": {"key": "goal"}},
+          {"type": "action", "name": "wait", "args": {"ticks": 5}}
+        ]
+      },
+      {"type": "action", "name": "wait", "args": {"ticks": 10}}
+    ]
+  }
+}

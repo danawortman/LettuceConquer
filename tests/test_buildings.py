@@ -76,6 +76,20 @@ def test_sprouting_buildings_name_real_units():
             assert b.sprouts in UNITS
 
 
+def test_inlet_art_and_can_puddle_are_centred_on_their_channel_column():
+    import re as _re
+    for stem in INLET_ART:  # the gate or sign is centred on its anchor (the middle of the inlet tile's edge)
+        surf = _load((BUILDING_DIR / f"{stem}.svg").read_text(encoding="utf-8"))
+        rects = pygame.mask.from_surface(surf).get_bounding_rects()
+        box = rects[0].unionall(rects[1:])
+        assert abs(box.centerx - -INLET_FRAME[0]) <= 3, (stem, box)
+    for level in ("full", "half", "low"):  # the puddle sits over the middle of the outlet column (60 right of centre)
+        text = _svg("watering_can", level)
+        shift = int(_re.search(r'translate\((-?\d+),0\)', text).group(1))
+        cx = int(_re.search(r'<ellipse cx="(-?\d+)" cy="-?\d+" rx="44"', text).group(1))
+        assert shift + cx == 60, level
+
+
 def test_building_surface_is_its_frame_at_scale():
     assert art.building_surface("greenhouse", "grown", "red", 0.5).get_size() == (250, 205)
     assert art.building_surface("scarecrow", "grown", "blue", 1.0).get_size() == (260, 280)

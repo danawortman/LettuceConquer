@@ -5,9 +5,13 @@ plain JSON.
 """
 from __future__ import annotations
 
+from collections import namedtuple
+
 from lettuce_conquer.sim import data
 from lettuce_conquer.sim.bt import FAILURE, RUNNING, SUCCESS, Arg, node
 from lettuce_conquer.sim.pathfind import _octile, find_path
+
+_Box = namedtuple("_Box", "x y w h")  # a footprint, for World.ring
 
 
 def _tile(value) -> tuple[int, int] | None:
@@ -483,3 +487,81 @@ def sprout(ctx, kind):
         if world.start_sprout(team, b, kind):
             return SUCCESS
     return FAILURE
+
+
+# ---------------------------------------------------------------- combat
+def _enemies(ctx, reach):
+    world, unit = ctx.world, ctx.agent
+    return [o for o in world.units if world.is_enemy(unit.team, o) and world.tiles_between(unit, o) <= reach]
+
+
+@node("condition", "unit", "True when an enemy unit is within `range` tiles.", range=Arg("int", data.SIGHT))
+def enemy_near(ctx, range):  # noqa: A002  (the argument is named for tree authors)
+    return SUCCESS if _enemies(ctx, range) else FAILURE
+
+
+@node("action", "unit", "Find the nearest enemy unit within `range` tiles (fighters before Spuds); store its id "
+      "in `key`.", key=Arg("str", "foe"), range=Arg("int", data.SIGHT))
+def find_enemy(ctx, key, range):  # noqa: A002
+    world = ctx.world
+    foes = [(world.tiles_between(ctx.agent, o), o.kind == "spud", world.local(ctx.team, *world.tile_of(o)), o.id)
+            for o in _enemies(ctx, range)]
+    if not foes:
+        return FAILURE
+    ctx.bb[key] = min(foes)[3]
+    return SUCCESS
+
+
+@node("action", "unit", "Attack the enemy unit or building whose id is in `key`: walk up to it, then hit it "
+      "whenever ready (Pea Shooters from 4 tiles, others from the next tile). Runs while fighting; succeeds once "
+      "it has fallen; fails if it can't be reached or this unit can't fight.", key=Arg("str", "foe"))
+def attack(ctx, key):
+    world, unit = ctx.world, ctx.agent
+    stats = data.ATTACK.get(unit.kind)
+    eid = ctx.bb.get(key)
+    if stats is None or eid is None:
+        return FAILURE
+    foe = world.target(eid)
+    if foe is None or not world.is_enemy(unit.team, foe):
+        ctx.bb.pop(key, None)  # it fell (or was never an enemy)
+        return SUCCESS if foe is None else FAILURE
+    if world.tiles_between(unit, foe) <= stats["range"]:
+        world.strike(unit, foe)  # stand and fight (does nothing while getting ready to hit again)
+        return RUNNING
+    here = world.tile_of(unit)
+    ring = world.ring(_Box(*world.footprint(foe)))
+    spots = [t for t in ring if world.free(*t, unit)]
+    if not spots:
+        return FAILURE
+    spot = min(spots, key=lambda t: (_octile(here, t), world.local(ctx.team, *t)))  # mirrored tie-break
+    status = _walk_to(ctx, spot)
+    return RUNNING if status == SUCCESS else status
+
+
+@node("action", "unit", "Copy whatever the team planner stores under `team_key` (a tile, an id, a word) into `key`.",
+      team_key=Arg("str"), key=Arg("str"))
+def copy_team_value(ctx, team_key, key):
+    if team_key not in ctx.team.bb:
+        return FAILURE
+    value = ctx.team.bb[team_key]
+    ctx.bb[key] = list(value) if isinstance(value, list) else value
+    return SUCCESS
+
+
+@node("condition", "any", "True when the team has at least `count` fighters (Sir Cabbages, Pea Shooters and Carrot "
+      "Lancers).", count=Arg("int", 1))
+def fighters_at_least(ctx, count):
+    have = sum(1 for u in ctx.world.units if u.team == ctx.team.id and u.kind in data.ATTACK)
+    return SUCCESS if have >= count else FAILURE
+
+
+@node("action", "team", "Store the id of the nearest enemy Greenhouse still standing in `key`.", key=Arg("str", "target"))
+def choose_enemy_greenhouse(ctx, key):
+    world, team = ctx.world, ctx.agent
+    home = tuple(team.spawn)
+    targets = [(_distance_to(home, b), world.local_corner(team, b), b.id) for b in world.buildings
+               if b.kind == "greenhouse" and world.is_enemy(team.id, b)]
+    if not targets:
+        return FAILURE
+    ctx.bb[key] = min(targets)[2]
+    return SUCCESS

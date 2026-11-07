@@ -1,7 +1,8 @@
 """The game world and its fixed-step update.
 
 Each tick: stumps regrow, every team's planner tree runs, then every unit's tree (in id order), then
-sprouting buildings draw water and finish units, then units move. A unit only walks while one of its
+Scarecrows shoot, then every hit made this tick lands at once (so no army strikes first), then sprouting
+buildings draw water and finish units, then units move. A unit only walks while one of its
 tree's move actions is running. Units never share a tile: a unit reserves the next tile before
 stepping into it, and waits (then re-plans) if it's taken.
 """
@@ -20,6 +21,7 @@ from lettuce_conquer.sim.rng import Rng, seed_state
 
 T = data.TILE
 ORTHOGONAL = pathfind.STEPS[:4]
+NEUTRAL = -1  # the team of channel tiles nobody owns (each Watering Can's outlet)
 
 
 @dataclass
@@ -42,6 +44,10 @@ class Unit:
     stuck: bool = False                            # blocked long enough to re-plan around units
     trace: dict = field(default_factory=dict)      # node statuses from the last tick (inspection only)
     move_requested: bool = False
+    hp: int = 0
+    next_attack: int = 0                           # tick it can hit again
+    battle_until: int = -1                         # in battle mode (and drawn so) until this tick
+    shot: list | None = None                       # last hit: [target x, target y, tick] (for drawing)
 
 
 @dataclass
@@ -61,6 +67,8 @@ class Building:
     sprout_kind: str = ""    # unit being sprouted
     sprout_left: int = 0     # points of sprouting left (data.PACE a tick, more on fertile ground)
     water_owed: int = 0      # water still to draw for it
+    hp: int = 0
+    next_attack: int = 0     # Scarecrows: tick the crow can strike again
 
 
 @dataclass
@@ -83,7 +91,7 @@ class Channel:
     """One tile of irrigation ditch. Planned first, then dug by Spuds; water flows once dug."""
     x: int
     y: int
-    team: int       # who planned it (and digs it)
+    team: int       # who planned it (and digs it); NEUTRAL for a can's ready-made outlet tile
     order: int      # digging order (planned routes are dug from the can outward)
     dug: bool = False
     progress: int = 0
@@ -102,6 +110,7 @@ class Team:
     bb: dict = field(default_factory=dict)
     bt_state: dict = field(default_factory=dict)
     trace: dict = field(default_factory=dict)
+    alive: bool = True                              # out once its Greenhouse is destroyed
 
 
 class World:
@@ -121,6 +130,8 @@ class World:
             amount = data.CAN_CAPACITY if f.kind == "watering_can" else data.YIELDS.get(f.kind, ("", 0))[1]
             self.things.append(Thing(self._new_id(), f.kind, f.x, f.y, f.w, f.h, amount=amount, max_amount=amount))
         self.channels: dict[tuple[int, int], Channel] = {}
+        self.winner: int | None = None   # once decided: the last team standing, or -1 for a draw
+        self._hits: list = []            # hits made this tick, landing together at the end of it
         self._channel_order = 0
         self.teams: list[Team] = []
         self.buildings: list[Building] = []
@@ -131,11 +142,17 @@ class World:
                         rng_state=seed_state(seed ^ 0x7EA4))
             self.teams.append(team)
             work = data.BUILD_WORK["greenhouse"] * data.PACE
-            self.buildings.append(Building(self._new_id(), i, "greenhouse", *base["greenhouse"], work=work, progress=work))
+            self.buildings.append(Building(self._new_id(), i, "greenhouse", *base["greenhouse"], work=work,
+                                           progress=work, hp=data.BUILDING_HP["greenhouse"]))
             kinds = ("spud",) + (data.DEMO_ARMY if demo_army else ())
             for kind, tile in zip(kinds, [base["spawn"], *base["demo_spawns"]]):
                 self._spawn(team, kind, *tile)
         self.blocked = {(o.x + i, o.y + j) for o in self.things + self.buildings for i in range(o.w) for j in range(o.h)}
+        for can in self.things:  # each can's puddle comes with its first channel tile already dug, free and neutral
+            out = self.outlet_tile(can) if can.kind == "watering_can" else None
+            if out is not None and self.walkable(*out):
+                self.channels[out] = Channel(out[0], out[1], NEUTRAL, self._channel_order, dug=True, paid=True)
+                self._channel_order += 1
 
     # ------------------------------------------------------------ queries
     def walkable(self, x: int, y: int) -> bool:
@@ -249,10 +266,10 @@ class World:
             thing.state = "full" if thing.amount == thing.max_amount else ("half" if thing.amount else "stump")
             if thing.amount == 0:
                 thing.regrow_at = self.tick + data.TREE_REGROW_TICKS
-        elif thing.amount == 0 and thing.kind != "watering_can":  # compost heaps and rocks are used up for good
+        elif thing.amount == 0 and thing.kind != "watering_can":  # heaps, rocks and piles are used up for good
             self.things.remove(thing)
             self.blocked -= {(thing.x + i, thing.y + j) for i in range(thing.w) for j in range(thing.h)}
-        else:
+        elif not thing.kind.startswith("remains"):  # fallen-unit piles have one look
             self._set_level(thing)
         return n
 
@@ -316,7 +333,8 @@ class World:
     def place_building(self, team: Team, kind: str, x: int, y: int) -> Building:
         size = BUILDINGS[kind].footprint
         b = Building(self._new_id(), team.id, kind, x, y, size, size, state="planted",
-                     work=data.BUILD_WORK[kind] * data.PACE, fertile=self.fertility(x, y, size, size))
+                     work=data.BUILD_WORK[kind] * data.PACE, fertile=self.fertility(x, y, size, size),
+                     hp=data.BUILDING_HP[kind])
         self.buildings.append(b)
         self.blocked |= {(x + i, y + j) for i in range(size) for j in range(size)}
         return b
@@ -441,26 +459,176 @@ class World:
                         cans[can.id] = can.amount
             team.stock["water"] = sum(cans.values())
 
+    # ------------------------------------------------------------ combat
+    def unit(self, uid) -> Unit | None:
+        for u in self.units:
+            if u.id == uid:
+                return u
+        return None
+
+    def target(self, eid) -> Unit | Building | None:
+        """A unit or building by id (what can be attacked)."""
+        u = self.unit(eid)
+        if u is not None:
+            return u
+        o = self.entity(eid)
+        return o if isinstance(o, Building) else None
+
+    def footprint(self, o) -> tuple[int, int, int, int]:
+        """(x, y, w, h) in tiles, for a unit or a map object."""
+        if isinstance(o, Unit):
+            return (*self.tile_of(o), 1, 1)
+        return o.x, o.y, o.w, o.h
+
+    def tiles_between(self, unit: Unit, o) -> int:
+        """Tiles from the unit to the nearest tile of o (diagonal steps count as one)."""
+        x, y = self.tile_of(unit)
+        ox, oy, w, h = self.footprint(o)
+        return max(abs(x - min(max(x, ox), ox + w - 1)), abs(y - min(max(y, oy), oy + h - 1)))
+
+    def is_enemy(self, team_id: int, o) -> bool:
+        return getattr(o, "team", team_id) != team_id and self.teams[o.team].alive
+
+    @staticmethod
+    def damage(attacker: str, base: int, target) -> int:
+        """Counters: double against the unit you beat, half against the unit that beats you."""
+        if isinstance(target, Unit):
+            if data.BEATS.get(attacker) == target.kind:
+                return base * data.COUNTER_PERCENT // 100
+            if data.BEATS.get(target.kind) == attacker:
+                return base * data.COUNTERED_PERCENT // 100
+        return base
+
+    def strike(self, unit: Unit, target) -> bool:
+        """Hit `target` if it's an enemy in reach and the unit is ready. The hit lands at the end of the tick."""
+        stats = data.ATTACK.get(unit.kind)
+        if (stats is None or target is None or not self.is_enemy(unit.team, target)
+                or self.tiles_between(unit, target) > stats["range"] or self.tick < unit.next_attack):
+            return False
+        unit.next_attack = self.tick + stats["cooldown"]
+        self._hits.append((target, self.damage(unit.kind, stats["damage"], target)))
+        unit.battle_until = self.tick + data.BATTLE_LINGER
+        if isinstance(target, Unit):
+            unit.shot = [target.x, target.y, self.tick]
+        else:
+            unit.shot = [(target.x * 2 + target.w) * T // 2, (target.y * 2 + target.h) * T // 2, self.tick]
+        return True
+
+    def _scarecrows(self) -> None:
+        """Grown Scarecrows: the crow strikes the nearest enemy unit in reach (ties broken in the team's view)."""
+        stats = data.SCARECROW
+        for b in self.buildings:
+            if b.kind != "scarecrow" or b.progress < b.work or self.tick < b.next_attack:
+                continue
+            team = self.teams[b.team]
+            foes = [(self.tiles_between(u, b), self.local(team, *self.tile_of(u)), u.id, u) for u in self.units
+                    if self.is_enemy(b.team, u) and self.tiles_between(u, b) <= stats["range"]]
+            if foes:
+                foe = min(foes, key=lambda f: f[:2])[3]
+                b.next_attack = self.tick + stats["cooldown"]
+                self._hits.append((foe, stats["damage"]))
+
+    def _land_hits(self) -> None:
+        """Every hit made this tick lands together; whatever drops to 0 falls at once."""
+        for target, amount in self._hits:
+            target.hp -= amount
+            if isinstance(target, Unit):
+                target.battle_until = self.tick + data.BATTLE_LINGER
+        self._hits.clear()
+        fallen = [u for u in self.units if u.hp <= 0]
+        wrecked = [b for b in self.buildings if b.hp <= 0]
+        for u in fallen:
+            self._fall(u)
+        for b in wrecked:
+            self._wreck(b)
+        for b in wrecked:
+            if b.kind == "greenhouse" and self.teams[b.team].alive:
+                self._eliminate(self.teams[b.team])
+        if any(b.kind == "greenhouse" for b in wrecked) and self.winner is None:
+            alive = [t.id for t in self.teams if t.alive]
+            if len(alive) <= 1:
+                self.winner = alive[0] if alive else -1
+
+    def _fall(self, u: Unit) -> None:
+        """A unit falls and leaves a Compost pile on its tile."""
+        self.units.remove(u)
+        x, y = self.tile_of(u)
+        amount = data.YIELDS[f"remains_{u.kind}"][1]
+        self.things.append(Thing(self._new_id(), f"remains_{u.kind}", x, y, amount=amount, max_amount=amount))
+        self.blocked.add((x, y))
+
+    def _wreck(self, b: Building) -> None:
+        if b in self.buildings:
+            self.buildings.remove(b)
+            self.blocked -= {(b.x + i, b.y + j) for i in range(b.w) for j in range(b.h)}
+
+    def _eliminate(self, team: Team) -> None:
+        """A team whose Greenhouse is gone is out: its units fall and its buildings go with it."""
+        team.alive = False
+        for u in [u for u in self.units if u.team == team.id]:
+            self._fall(u)
+        for b in [b for b in self.buildings if b.team == team.id]:
+            self._wreck(b)
+
+    def _battle_modes(self) -> None:
+        """Fighters with an enemy in sight are in battle mode (hitting or being hit also counts)."""
+        for u in self.units:
+            if u.kind in data.ATTACK and any(self.is_enemy(u.team, o) and self.tiles_between(u, o) <= data.SIGHT
+                                             for o in self.units):
+                u.battle_until = self.tick + data.BATTLE_LINGER
+
+    def in_battle(self, u: Unit) -> bool:
+        return self.tick < u.battle_until
+
     # ------------------------------------------------------------ update
     def step(self) -> None:
         for thing in self.things:
             if thing.regrow_at >= 0 and self.tick >= thing.regrow_at:
                 thing.amount, thing.state, thing.regrow_at = thing.max_amount, "full", -1
         for team in self.teams:
-            bt.run(self.trees[team.tree], bt.Context(self, team, team, "team"))
+            if team.alive:
+                bt.run(self.trees[team.tree], bt.Context(self, team, team, "team"))
         for unit in list(self.units):
             unit.prev_x, unit.prev_y = unit.x, unit.y
             unit.move_requested = False
             bt.run(self.trees[unit.tree], bt.Context(self, unit, self.team_of(unit), "unit"))
             if not unit.move_requested:
                 unit.path.clear()
+        self._scarecrows()
+        self._land_hits()
         self._grow_sprouts()
+        granted = self._grant_steps()
         for unit in self.units:
-            self._move(unit)
+            self._move(unit, granted)
+        self._battle_modes()
         self._update_water_stock()
         self.tick += 1
 
-    def _move(self, unit: Unit) -> None:
+    def _grant_steps(self) -> set:
+        """Which units may step into a new tile this tick. Everyone sees who stood (or was stepping) where
+        at the start of the move, so no army moves first. Of several units wanting the same free tile, the
+        one nearest it gets it (a teammate tie goes to the lower id); enemies exactly as near both wait.
+        Distances look the same from every mirrored side, so mirrored armies get mirrored outcomes."""
+        taken = {self.tile_of(u) for u in self.units} | {tuple(u.reserved) for u in self.units if u.reserved}
+        claims: dict[tuple, list] = {}
+        for u in self.units:
+            if u.path:
+                nxt = tuple(u.path[0])
+                if nxt != self.tile_of(u) and u.reserved != list(nxt) and self.walkable(*nxt):
+                    claims.setdefault(nxt, []).append(u)
+        granted = set()
+        for tile, units in claims.items():
+            if tile in taken:
+                continue
+            cx, cy = self.center(*tile)
+            ranked = sorted(((u.x - cx) ** 2 + (u.y - cy) ** 2, u.id, u) for u in units)
+            best = ranked[0]
+            if any(d == best[0] and u.team != best[2].team for d, _, u in ranked[1:]):
+                continue  # enemies exactly as near: neither goes
+            granted.add(best[2].id)
+        return granted
+
+    def _move(self, unit: Unit, granted: set) -> None:
         if not unit.path:
             unit.reserved = None
             return
@@ -470,7 +638,7 @@ class World:
             unit.reserved = None
             return
         if nxt != self.tile_of(unit) and unit.reserved != list(nxt):
-            if self.occupant(nxt, unit) is not None:  # someone's there: wait, and re-plan if it lasts
+            if unit.id not in granted:  # someone's there (or got there first): wait, and re-plan if it lasts
                 unit.wait_ticks += 1
                 unit.stuck = unit.wait_ticks >= data.STUCK_TICKS
                 return
@@ -486,6 +654,12 @@ class World:
         else:  # round toward zero, so a step is the same size in every direction (mirror fairness)
             unit.x += (1 if dx >= 0 else -1) * (abs(dx) * speed // dist)
             unit.y += (1 if dy >= 0 else -1) * (abs(dy) * speed // dist)
+            # Never rest exactly on a tile edge: rounding a position down to a tile isn't mirror-symmetric there
+            # (a unit can stop anywhere, e.g. when an enemy comes into reach), so step one unit onward.
+            if dx and unit.x % T == 0:
+                unit.x += 1 if dx > 0 else -1
+            if dy and unit.y % T == 0:
+                unit.y += 1 if dy > 0 else -1
 
     # ------------------------------------------------------------ setup helpers
     def _new_id(self) -> int:
@@ -494,7 +668,8 @@ class World:
 
     def _spawn(self, team: Team, kind: str, tx: int, ty: int) -> Unit:
         x, y = self.center(tx, ty)
-        unit = Unit(self._new_id(), team.id, kind, x, y, x, y, self.tree_names[kind], bb={"home": [tx, ty]})
+        unit = Unit(self._new_id(), team.id, kind, x, y, x, y, self.tree_names[kind], bb={"home": [tx, ty]},
+                    hp=data.UNIT_HP[kind])
         self.units.append(unit)
         return unit
 
@@ -504,7 +679,7 @@ class World:
         def plain(obj, drop=()):
             return {k: v for k, v in asdict(obj).items() if k not in drop}
         return {
-            "seed": self.seed, "tick": self.tick, "rng": self.rng.state,
+            "seed": self.seed, "tick": self.tick, "rng": self.rng.state, "winner": self.winner,
             "tiles": ["".join(row) for row in self.tiles],
             "teams": [plain(t, ("trace",)) for t in self.teams],
             "buildings": [plain(b) for b in self.buildings],

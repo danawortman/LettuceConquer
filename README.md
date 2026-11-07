@@ -23,9 +23,15 @@ this project in its own virtual environment.
 Behavior trees drive every army; you watch and inspect. Each demo army starts with three Spuds and
 three fighters. The team planner hands the Spuds jobs, plants a Cabbage Patch, Pea Trellis and Carrot
 Bed, plans irrigation channels to everything that sprouts, and sprouts more Spuds and fighters as
-Compost and Water allow. Spuds gather, tend new buildings until they grow, dig channels and carry
-water to the Watering Cans; fighters follow the planner's rally point. The top bar shows each team's
-stock. Options: `--seed N` (map), `--teams 2|3|4`,
+Compost and Water allow, and plants a Scarecrow. Spuds gather, tend new buildings until they grow,
+dig channels and carry water to the Watering Cans. Fighters guard home and fight any enemy in sight;
+once a team has 7 fighters it raids the nearest enemy Greenhouse, and calls the raid off when fewer
+than 3 are left. A team whose Greenhouse falls is out; the last team standing wins. The top bar shows
+each team's units and stock.
+
+The armies are mirrored and run the same trees, so 2 or 4 armies usually fight to a standstill or a
+draw. Three armies aren't symmetric (one sits between the other two), so `--teams 3` produces a
+winner (seed 1: Red, at tick 3,904, about 6½ minutes of game time; use `]` to speed up). Options: `--seed N` (map), `--teams 2|3|4`,
 `--one-worker` (start with one Spud per army, the real rule, instead of the demo army),
 `--ticks N` (fast-forward), `--zoom Z`.
 
@@ -76,7 +82,9 @@ by setting a rally point the units read). Trees are JSON files in `src/lettuce_c
 ```
 
 - **Composites:** `sequence` (runs children until one fails), `selector` (until one succeeds). Both
-  remember a running child and resume it next tick.
+  remember a running child and resume it next tick. `reactive_sequence` and `reactive_selector` start
+  from their first child every tick instead, so an earlier child (say, "an enemy is in sight") can take
+  over from a running later one, which is then stopped.
 - **Decorators** (one `child`): `inverter`, `succeeder`, `repeat` (optional `times`), `cooldown` (`ticks`).
 - **Leaves:** `condition` and `action` nodes from the node library in `sim/nodes.py`, with `args`.
 - Every node returns `success`, `failure` or `running`. Each agent keeps its own blackboard (`bb`) and
@@ -94,10 +102,40 @@ Node library, by area:
 | Conditions | `key_equals`, `stock_at_least`, `building_count_below`, `unit_count_below`, `building_fertile`, `carrying` |
 | Gathering | `find_nearest_resource`, `harvest`, `is_full`, `is_carrying`, `find_dropoff`, `deposit` |
 | Building and water | `find_construction`, `tend`, `find_channel_work`, `dig`, `find_can`, `pour` |
-| Team planner | `choose_rally`, `assign_spud_jobs`, `order_building`, `order_channel`, `sprout` |
+| Combat | `enemy_near`, `find_enemy`, `attack`, `copy_team_value`, `fighters_at_least` |
+| Team planner | `choose_rally`, `assign_spud_jobs`, `order_building`, `order_channel`, `sprout`, `choose_enemy_greenhouse` |
 
-The default trees are `unit_worker` (Spuds), `unit_follow_rally` (fighters) and `planner_grow` (the
-team planner). `unit_gather`, `planner_rally` and `unit_wander` are simpler examples.
+The default trees are `unit_worker` (Spuds), `unit_fighter` (fighters) and `planner_battle` (the
+team planner). `planner_grow` (builds an army but never raids), `unit_follow_rally`, `unit_gather`,
+`planner_rally` and `unit_wander` are simpler examples.
+
+## Combat
+
+- Fighters hit the enemy they're attacking whenever they're ready. Sir Cabbage and Carrot Lancer reach
+  the next tile (diagonals too), Pea Shooters 4 tiles. Spuds don't fight.
+- **Counters:** each fighter deals double damage to the one it beats and half to the one that beats it
+  (Sir Cabbage > Pea Shooter > Carrot Lancer > Sir Cabbage).
+- **No army acts first.** Every hit in a tick lands at the same moment, at the end of the tick. Units
+  decide their steps from where everyone stood at the start of the move; when several want the same
+  tile the nearest gets it, and enemies exactly as near both wait. Units also never stop exactly on a
+  tile edge, where rounding a position to a tile wouldn't be mirror-symmetric.
+- Fighters with an enemy within 6 tiles, and anyone hitting or being hit, switch to battle-mode art.
+  Damaged units and buildings show a health bar; a grown building below half health looks wilted.
+- A fallen unit leaves a Compost pile on its tile that Spuds can gather. Destroyed buildings are removed.
+- A grown **Scarecrow Watchtower**'s crow strikes the nearest enemy unit within 5 tiles.
+- **Losing:** a team whose Greenhouse is destroyed is out; its units fall and its buildings go too. The
+  last team standing wins (if the last Greenhouses fall together, it's a draw).
+
+| | Health | Damage | Reach (tiles) | Ticks between hits |
+|---|---|---|---|---|
+| Spud | 40 | | | |
+| Sir Cabbage | 120 | 12 | 1 | 10 |
+| Pea Shooter | 60 | 8 | 4 | 10 |
+| Carrot Lancer | 80 | 14 | 1 | 8 |
+| Scarecrow (crow) | 300 | 6 | 5 | 10 |
+
+Building health: Greenhouse 1500, other buildings 400. Fallen units leave 20 to 40 Compost. All
+placeholders in `sim/data.py`.
 
 ## Economy
 
@@ -119,7 +157,8 @@ team planner). `unit_gather`, `planner_rally` and `unit_wander` are simpler exam
   some of it is (`World.fertility`, `Building.fertile`). Sprouting on fertile ground uses the same Water,
   just sooner. The demo planner still builds near home; choosing fertile sites is left open.
 - **Irrigation:** `order_channel` plans a channel from the nearest Watering Can's spout to a building's
-  inlet. Spuds dig it tile by tile, from the can outward, paying 5 Lumber per tile. Units walk across
+  inlet. Spuds dig it tile by tile, from the can outward, paying 5 Lumber per tile. Each can's first
+  tile, where its puddle is, comes already dug and free, and belongs to nobody. Units walk across
   channels. Dug channels joined to a can holding water are drawn wet.
 - **Water:** Watering Cans are neutral and hold 500 Water; any team can connect to any can. A Spud
   whose job is water fills up at a lake (lakes never run dry) and pours it into a connected can that
@@ -129,7 +168,8 @@ team planner). `unit_gather`, `planner_rally` and `unit_wander` are simpler exam
   the can is dry. The new unit appears beside the inlet.
 - **Inlets face the middle of the map.** The armies' bases are mirrored, so building and can art is
   mirrored too, and the sluice gate sits on the side facing the middle. In bases in the bottom half that
-  is the back, so the gate is drawn just behind the building's drawing and the channel runs on to meet it. Every tie is broken in the team's own mirrored view, so mirrored armies
+  is the back, so the gate is drawn just behind the building's drawing and the channel runs on to meet it
+  (and a can's channel runs under the can to its puddle). Gates are centred on their channel. Every tie is broken in the team's own mirrored view, so mirrored armies
   make mirrored choices; a test checks every unit, building and channel against its twin.
 
 | Building | Lumber | Stone | Tending |

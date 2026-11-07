@@ -9,7 +9,7 @@ import pygame
 from lettuce_conquer import art, fieldart
 from lettuce_conquer.terrain import DECAL_FRAME, piece_for
 from lettuce_conquer.sim import bt
-from lettuce_conquer.sim.data import CHANNEL_WORK, TILE
+from lettuce_conquer.sim.data import BUILDING_HP, CHANNEL_WORK, TILE, UNIT_HP
 from lettuce_conquer.sim.world import World
 
 INK = (43, 33, 24)
@@ -151,8 +151,14 @@ def draw_world(screen: pygame.Surface, world: World, cam: Camera, alpha: float =
         gx, gy = (b.x + b.w / 2) * TILE, (b.y + b.h) * TILE
         color = world.teams[b.team].color
         flip = world.flips(world.teams[b.team])[0] < 0  # mirrored quarters get mirrored art (inlet side)
-        standing.append((gy, gx, b.id, lambda b=b, g=(gx, gy), c=color, f=flip: art.blit_building(
-            screen, b.kind, b.state, c, cam.to_screen(*g), z, f)))
+        look = "wilted" if b.state == "grown" and b.hp * 2 < BUILDING_HP[b.kind] else b.state  # badly damaged
+
+        def draw_building(b=b, g=(gx, gy), c=color, f=flip, look=look):
+            sx, sy = cam.to_screen(*g)
+            art.blit_building(screen, b.kind, look, c, (sx, sy), z, f)
+            if b.hp < BUILDING_HP[b.kind]:
+                draw_health(screen, sx, sy - (b.h * 85 + 40) * z, b.w * 70 * z, b.hp / BUILDING_HP[b.kind], z)
+        standing.append((gy, gx, b.id, draw_building))
         anchor = inlet_anchor(world, b)
         if anchor is not None:  # a sluice gate once grown, a water-drop sign before that
             stem = "inlet_sign" if b.state in ("planted", "sprout") else "inlet_gate"
@@ -168,9 +174,11 @@ def draw_world(screen: pygame.Surface, world: World, cam: Camera, alpha: float =
             sx, sy = cam.to_screen(*g)
             if u is selected:
                 pygame.draw.ellipse(screen, (255, 250, 220), (sx - 46 * z, sy - 14 * z, 92 * z, 28 * z), max(2, round(4 * z)))
-            art.blit_unit(screen, u.kind, "idle", c, (sx, sy), z)
+            art.blit_unit(screen, u.kind, "battle" if world.in_battle(u) else "idle", c, (sx, sy), z)
             if u.carry:
                 draw_load(screen, u.carry_kind, sx + 34 * z, sy - 150 * z, z)
+            if u.hp < UNIT_HP[u.kind]:
+                draw_health(screen, sx, sy - 205 * z, 70 * z, u.hp / UNIT_HP[u.kind], z)
         standing.append((gy, gx, u.id, draw_unit))
 
     margin = 260
@@ -178,6 +186,40 @@ def draw_world(screen: pygame.Surface, world: World, cam: Camera, alpha: float =
         sx, sy = cam.to_screen(gx, gy)
         if -margin < sx < sw + margin and -margin * 0.3 < sy < sh + margin * 1.6:
             draw()
+    draw_shots(screen, world, cam, alpha)
+
+
+PEA = (126, 190, 70)
+SHOT_TICKS = 3  # a pea takes this long to fly
+
+
+def draw_shots(screen, world: World, cam: Camera, alpha: float) -> None:
+    """Peas in flight from Pea Shooters' latest shots (drawing only; the hit itself lands at once)."""
+    z = cam.zoom
+    for u in world.units:
+        if u.kind != "pea" or not u.shot:
+            continue
+        tx, ty, tick = u.shot
+        k = (world.tick - 1 - tick + alpha) / SHOT_TICKS
+        if not 0 <= k <= 1:
+            continue
+        ux, uy = unit_position(u, alpha)
+        x, y = cam.to_screen(ux + (tx - ux) * k, uy - 110 + (ty - 70 - (uy - 110)) * k)
+        r = max(3, round(11 * z))
+        pygame.draw.circle(screen, PEA, (round(x), round(y)), r)
+        pygame.draw.circle(screen, INK, (round(x), round(y)), r, max(1, round(3 * z)))
+
+
+def draw_health(screen, cx: float, y: float, width: float, frac: float, z: float) -> None:
+    """A small health bar centred on cx: green, then yellow, then red as it empties."""
+    w, h = max(16, round(width)), max(4, round(12 * z))
+    rect = pygame.Rect(round(cx - w / 2), round(y), w, h)
+    pygame.draw.rect(screen, (60, 45, 35), rect, border_radius=h // 2)
+    frac = max(0.0, min(1.0, frac))
+    color = (90, 180, 70) if frac > 0.5 else ((230, 180, 50) if frac > 0.25 else (210, 70, 55))
+    if frac > 0:
+        pygame.draw.rect(screen, color, (rect.x, rect.y, max(h, round(w * frac)), h), border_radius=h // 2)
+    pygame.draw.rect(screen, INK, rect, max(1, round(2 * z)), border_radius=h // 2)
 
 
 BACK_GATE_GAP = 6  # art units between a back-side gate and the top of the building's drawing
@@ -199,7 +241,8 @@ def inlet_anchor(world: World, b):
 
 def draw_inlet_runs(screen, world: World, cam: Camera, wet: set) -> None:
     """For back inlets: the dug channel carries on from the inlet tile across the footprint's back tiles
-    to the pulled-forward gate (the building's drawing covers the rest)."""
+    to the pulled-forward gate (the building's drawing covers the rest). Likewise a Watering Can whose
+    outlet is behind it: the channel runs under the can to the puddle at its front."""
     z = cam.zoom
     for b in world.buildings:
         anchor = inlet_anchor(world, b)
@@ -212,6 +255,17 @@ def draw_inlet_runs(screen, world: World, cam: Camera, wet: set) -> None:
             if row * TILE >= anchor[1]:
                 break
             sx, sy = cam.to_screen(inlet[0] * TILE, row * TILE)
+            screen.blit(piece, (round(sx), round(sy)))
+    for can in world.things:  # a can facing the middle from the back pours at the front: the channel runs under it
+        if can.kind != "watering_can":
+            continue
+        out = world.outlet_tile(can)
+        ch = world.channels.get(out)
+        if out[1] >= can.y or ch is None or not ch.dug:
+            continue
+        piece = art.channel_surface("straight", "wet" if out in wet else "dry", 1, z)
+        for row in range(can.y, can.y + can.h):
+            sx, sy = cam.to_screen(out[0] * TILE, row * TILE)
             screen.blit(piece, (round(sx), round(sy)))
 
 
@@ -314,17 +368,43 @@ def draw_hud(screen, font, world: World, speed: int, paused: bool) -> None:
         y = 32 + 22 * i
         pygame.draw.circle(screen, pygame.Color(art.TEAM_COLORS[team.color]), (18, y + 8), 7)
         x = 34
+        if not team.alive:
+            screen.blit(font.render("out: Greenhouse destroyed", True, UNVISITED), (x, y))
+            continue
+        units = sum(1 for u in world.units if u.team == team.id)
+        label = font.render(f"units {units}", True, INK)
+        screen.blit(label, (x, y))
+        x += 20 + label.get_width()
         for kind, amount in team.stock.items():
             pygame.draw.circle(screen, RESOURCE_COLORS[kind], (x + 6, y + 8), 6)
             label = font.render(f"{kind} {amount}", True, INK)
             screen.blit(label, (x + 16, y))
             x += 30 + label.get_width()
+    if world.winner is not None:
+        draw_banner(screen, world)
     help_text = "Arrows/WASD or right-drag: pan   Wheel: zoom   Space: pause   [ ]: speed   Click: inspect   Tab: next unit   Esc: quit"
     hint = font.render(help_text, True, INK)
     back = pygame.Surface((hint.get_width() + 16, 26), pygame.SRCALPHA)
     back.fill((246, 239, 217, 225))
     screen.blit(back, (0, screen.get_height() - 26))
     screen.blit(hint, (8, screen.get_height() - 22))
+
+
+def draw_banner(screen, world: World) -> None:
+    """The result, once the game is decided."""
+    if world.winner < 0:
+        text, color = "A draw! Every Greenhouse fell.", INK
+    else:
+        team = world.teams[world.winner]
+        text, color = f"{team.color.capitalize()} wins!", pygame.Color(art.TEAM_COLORS[team.color])
+    big = pygame.font.Font(None, 72)
+    label = big.render(text, True, color)
+    box = label.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2)).inflate(60, 36)
+    panel = pygame.Surface(box.size, pygame.SRCALPHA)
+    panel.fill((246, 239, 217, 235))
+    screen.blit(panel, box)
+    pygame.draw.rect(screen, INK, box, 3, border_radius=10)
+    screen.blit(label, label.get_rect(center=box.center))
 
 
 def _node_text(node: dict) -> str:
@@ -354,7 +434,8 @@ def draw_inspector(screen, font, small, world: World, agent) -> None:
     tree = world.trees[agent.tree]
     is_team = not hasattr(agent, "kind")
     who = f"{agent.color} team planner" if is_team else f"{agent.kind} #{agent.id} ({world.teams[agent.team].color})"
-    extra = {} if is_team else {"carrying": f"{agent.carry} {agent.carry_kind}" if agent.carry else "nothing"}
+    extra = {} if is_team else {"health": f"{agent.hp} / {UNIT_HP[agent.kind]}",
+                                "carrying": f"{agent.carry} {agent.carry_kind}" if agent.carry else "nothing"}
     rows = []  # (indent, dot color or None, text, text color)
     for depth, paths, text in tree_lines(tree["root"]):
         status = next((agent.trace[p] for p in paths if p in agent.trace), None)

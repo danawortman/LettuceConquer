@@ -7,6 +7,7 @@ Trees are plain JSON so they can be saved, diffed, validated and edited without 
 and a node is one of
 
     {"type": "sequence" | "selector", "children": [<node>, ...]}
+    {"type": "reactive_sequence" | "reactive_selector", "children": [<node>, ...]}
     {"type": "inverter" | "succeeder", "child": <node>}
     {"type": "repeat", "child": <node>, "times": 3}        # "times" optional: forever
     {"type": "cooldown", "child": <node>, "ticks": 50}
@@ -16,7 +17,8 @@ Any node may also carry a "label" for display. Leaves come from the node library
 `node_catalog()` describes it as data for editors.
 
 Ticking returns "success", "failure" or "running". Sequences and selectors remember a running child
-and resume it next tick. Each agent (unit or team) keeps its own running memory (`bt_state`) and
+and resume it next tick. Reactive ones start from their first child every tick instead, so an earlier
+child (say, "an enemy is near") can take over from a running later one, which is then stopped. Each agent (unit or team) keeps its own running memory (`bt_state`) and
 blackboard (`bb`), so many agents can share one tree.
 """
 from __future__ import annotations
@@ -25,7 +27,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 SUCCESS, FAILURE, RUNNING = "success", "failure", "running"
-COMPOSITES = ("sequence", "selector")
+COMPOSITES = ("sequence", "selector", "reactive_sequence", "reactive_selector")
 DECORATORS = {"inverter": {}, "succeeder": {}, "repeat": {"times": False}, "cooldown": {"ticks": True}}  # param: required?
 LEAVES = ("condition", "action")
 SCOPES = ("unit", "team")
@@ -86,13 +88,19 @@ def _tick(node: dict, path: str, ctx: Context) -> str:
     t = node["type"]
     state = ctx.state
     if t in COMPOSITES:
-        stop = FAILURE if t == "sequence" else SUCCESS
-        status = SUCCESS if t == "sequence" else FAILURE
-        i = state.get(path, 0)
+        is_sequence = t.endswith("sequence")
+        reactive = t.startswith("reactive")
+        stop = FAILURE if is_sequence else SUCCESS
+        status = SUCCESS if is_sequence else FAILURE
+        was = state.get(path)
+        i = 0 if reactive else (was or 0)
         children = node["children"]
         while i < len(children):
             s = _tick(children[i], f"{path}/{i}", ctx)
             if s == RUNNING:
+                if reactive and was is not None and was != i:  # another child took over: stop the old one
+                    state.pop(f"{path}/{was}", None)
+                    _forget(state, f"{path}/{was}/")
                 state[path] = i
                 status = RUNNING
                 break
